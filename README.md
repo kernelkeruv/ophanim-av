@@ -1,7 +1,9 @@
 # OphanimAV Reviewer
-<img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/7ae0bb96-e5f6-4ec6-8c31-77114bea4508" />
+
 
 A local-first media review application built around libVLC, Faster-Whisper, PySide6, OpenCV and Ultralytics. It indexes audio and video, creates timed transcripts, provides clickable word seeking, detects scenes, motion and objects, and preserves original media as read-only input.
+
+<img width="1600" height="900" alt="image" src="https://github.com/user-attachments/assets/7ae0bb96-e5f6-4ec6-8c31-77114bea4508" />
 
 ## Privacy boundary
 
