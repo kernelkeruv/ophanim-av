@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_DIR="$HOME/dev/bodycam-ai"
-STATE_DIR="$HOME/.local/state/bodycam-ai"
+APP_DIR="${OPHANIM_AV_APP_DIR:-$HOME/dev/OphanimAV}"
+STATE_DIR="$HOME/.local/state/ophanim-av"
 
 source "$APP_DIR/runtime-env.sh"
 
 export \
-    BODYCAM_SOURCE \
-    BODYCAM_DERIVED \
+    OPHANIM_AV_SOURCE \
+    OPHANIM_AV_DERIVED \
     WHISPER_MODEL \
     YOLO_MODEL \
     YOLO_STRIDE \
@@ -23,15 +23,15 @@ LOCK_FILE="$STATE_DIR/index.lock"
 exec 9>"$LOCK_FILE"
 
 if ! flock -n 9; then
-    printf 'BODYCAM indexing is already running.\n'
+    printf 'OphanimAV indexing is already running.\n'
     printf 'Use these commands instead:\n'
-    printf '  bodycam-status\n'
-    printf '  bodycam-log\n'
+    printf '  ophanim-status\n'
+    printf '  ophanim-log\n'
     exit 0
 fi
 
 exec "$APP_DIR/.venv/bin/python" \
-    "$APP_DIR/bodycam_ai.py" \
-    --source "$BODYCAM_SOURCE" \
-    --derived "$BODYCAM_DERIVED" \
+    "$APP_DIR/ophanim_av.py" \
+    --source "$OPHANIM_AV_SOURCE" \
+    --derived "$OPHANIM_AV_DERIVED" \
     "$@"

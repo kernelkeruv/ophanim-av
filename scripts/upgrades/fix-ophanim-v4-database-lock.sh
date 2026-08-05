@@ -3,11 +3,11 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-APP_DIR="$HOME/dev/bodycam-ai"
+APP_DIR="$HOME/dev/ophanim-av"
 VENV_PYTHON="$APP_DIR/.venv/bin/python"
-DERIVED="/path/to/bodycam-ai-derived"
+DERIVED="/path/to/ophanim-av-derived"
 DATABASE="$DERIVED/catalog.sqlite3"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bodycam-ai"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ophanim-av"
 
 EXPECTED_SHA256='d65d8b9ef17c14f10dbc51427115aee5b8f3da1a00628782efb575ce48704979'
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
@@ -31,7 +31,7 @@ UPGRADE_SCRIPT="$(
     find "$HOME/Downloads" \
         -maxdepth 1 \
         -type f \
-        -name 'upgrade-bodycam-ai-v4.sh*' \
+        -name 'upgrade-ophanim-av-v4.sh*' \
         -printf '%T@ %p\n' 2>/dev/null |
     sort -nr |
     head -n 1 |
@@ -39,7 +39,7 @@ UPGRADE_SCRIPT="$(
 )"
 
 [[ -n "$UPGRADE_SCRIPT" && -f "$UPGRADE_SCRIPT" ]] ||
-    fail "upgrade-bodycam-ai-v4.sh was not found in ~/Downloads"
+    fail "upgrade-ophanim-av-v4.sh was not found in ~/Downloads"
 
 ACTUAL_SHA256="$(sha256sum "$UPGRADE_SCRIPT" | awk '{print $1}')"
 
@@ -50,14 +50,14 @@ printf '[1/8] Closing the BODYCAM review player...\n'
 pkill -f "$APP_DIR/player.py" 2>/dev/null || true
 
 printf '[2/8] Preventing the timer and rescan queue from restarting the indexer...\n'
-systemctl --user stop bodycam-ai-index.timer 2>/dev/null || true
-systemctl --user stop bodycam-ai-rescan.service 2>/dev/null || true
+systemctl --user stop ophanim-av-index.timer 2>/dev/null || true
+systemctl --user stop ophanim-av-rescan.service 2>/dev/null || true
 
 printf '[3/8] Stopping the active indexing process cleanly...\n'
-systemctl --user stop --no-block bodycam-ai-index.service 2>/dev/null || true
+systemctl --user stop --no-block ophanim-av-index.service 2>/dev/null || true
 
 for ((attempt = 1; attempt <= 60; attempt++)); do
-    if ! systemctl --user is-active --quiet bodycam-ai-index.service; then
+    if ! systemctl --user is-active --quiet ophanim-av-index.service; then
         break
     fi
 
@@ -67,32 +67,32 @@ done
 
 printf '\n'
 
-if systemctl --user is-active --quiet bodycam-ai-index.service; then
+if systemctl --user is-active --quiet ophanim-av-index.service; then
     printf 'Indexer did not stop within 60 seconds; sending SIGTERM...\n'
 
     systemctl --user kill \
         --kill-who=all \
         --signal=TERM \
-        bodycam-ai-index.service 2>/dev/null || true
+        ophanim-av-index.service 2>/dev/null || true
 
     sleep 10
 fi
 
-if systemctl --user is-active --quiet bodycam-ai-index.service; then
+if systemctl --user is-active --quiet ophanim-av-index.service; then
     printf 'Indexer still active; forcing termination...\n'
 
     systemctl --user kill \
         --kill-who=all \
         --signal=KILL \
-        bodycam-ai-index.service 2>/dev/null || true
+        ophanim-av-index.service 2>/dev/null || true
 
     sleep 3
 fi
 
-systemctl --user is-active --quiet bodycam-ai-index.service &&
-    fail "Could not stop bodycam-ai-index.service"
+systemctl --user is-active --quiet ophanim-av-index.service &&
+    fail "Could not stop ophanim-av-index.service"
 
-systemctl --user reset-failed bodycam-ai-index.service 2>/dev/null || true
+systemctl --user reset-failed ophanim-av-index.service 2>/dev/null || true
 
 printf '[4/8] Checkpointing and backing up the SQLite catalog...\n'
 
@@ -125,8 +125,8 @@ PYTHON_BACKUP
 chmod 600 "$DATABASE_BACKUP"
 
 printf '[5/8] Running the verified V4 upgrade without a competing database writer...\n'
-install -m 0700 -- "$UPGRADE_SCRIPT" /tmp/upgrade-bodycam-ai-v4.sh
-bash /tmp/upgrade-bodycam-ai-v4.sh
+install -m 0700 -- "$UPGRADE_SCRIPT" /tmp/upgrade-ophanim-av-v4.sh
+bash /tmp/upgrade-ophanim-av-v4.sh
 
 printf '[6/8] Verifying the migration and Python code...\n'
 
@@ -174,12 +174,12 @@ PYTHON_VERIFY
 
 "$VENV_PYTHON" -m py_compile \
     "$APP_DIR/player.py" \
-    "$APP_DIR/bodycam_ai.py"
+    "$APP_DIR/ophanim_av.py"
 
 printf '[7/8] Restarting the timer and indexing service...\n'
 systemctl --user daemon-reload
-systemctl --user enable --now bodycam-ai-index.timer
-systemctl --user start --no-block bodycam-ai-index.service
+systemctl --user enable --now ophanim-av-index.timer
+systemctl --user start --no-block ophanim-av-index.service
 
 printf '[8/8] Reporting the repaired state...\n'
 
@@ -209,13 +209,13 @@ ORDER BY type, name;
 
 printf '\nService state:\n'
 systemctl --user status \
-    bodycam-ai-index.service \
-    bodycam-ai-index.timer \
+    ophanim-av-index.service \
+    ophanim-av-index.timer \
     --no-pager \
     --full \
     || true
 
-printf '\n[OK] BODYCAM AI V4 installation completed.\n'
+printf '\n[OK] OphanimAV V4 installation completed.\n'
 printf 'Database backup:\n  %s\n' "$DATABASE_BACKUP"
 printf '\nThe upgraded player should already be open.\n'
-printf 'Otherwise run:\n  bodycam-player\n'
+printf 'Otherwise run:\n  ophanim-player\n'

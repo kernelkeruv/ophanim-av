@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_DIR="$HOME/dev/bodycam-ai"
-STATE_DIR="$HOME/.local/state/bodycam-ai"
+APP_DIR="${OPHANIM_AV_APP_DIR:-$HOME/dev/OphanimAV}"
+STATE_DIR="$HOME/.local/state/ophanim-av"
 
 source "$APP_DIR/runtime-env.sh"
 
 export \
-    BODYCAM_SOURCE \
-    BODYCAM_DERIVED \
+    OPHANIM_AV_SOURCE \
+    OPHANIM_AV_DERIVED \
     WHISPER_MODEL \
     YOLO_MODEL \
     YOLO_STRIDE \
@@ -17,7 +17,7 @@ export \
 
 export QT_QPA_PLATFORM=xcb
 
-DATABASE="$BODYCAM_DERIVED/catalog.sqlite3"
+DATABASE="$OPHANIM_AV_DERIVED/catalog.sqlite3"
 
 if [[ ! -f "$DATABASE" ]]; then
     printf 'ERROR: BODYCAM catalog does not exist:\n  %s\n' "$DATABASE" >&2

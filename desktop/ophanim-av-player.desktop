@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=BODYCAM AI Review Player
+Name=OphanimAV Review Player
 Comment=Review locally indexed media, transcripts and detected events
-Exec=/home/user/.local/bin/bodycam-player
+Exec=/home/user/.local/bin/ophanim-player
 Icon=vlc
 Terminal=false
 Categories=AudioVideo;Utility;

@@ -2,12 +2,12 @@
 set -Eeuo pipefail
 umask 077
 
-SOURCE_DIR="${BODYCAM_SOURCE:-/path/to/media}"
-DERIVED_DIR="${BODYCAM_DERIVED:-/path/to/bodycam-ai-derived}"
-APP_DIR="${BODYCAM_APP_DIR:-$HOME/dev/bodycam-ai}"
+SOURCE_DIR="${OPHANIM_AV_SOURCE:-/path/to/media}"
+DERIVED_DIR="${OPHANIM_AV_DERIVED:-/path/to/ophanim-av-derived}"
+APP_DIR="${OPHANIM_AV_APP_DIR:-$HOME/dev/ophanim-av}"
 VENV_DIR="$APP_DIR/.venv"
-CONFIG_DIR="$HOME/.config/bodycam-ai"
-STATE_DIR="$HOME/.local/state/bodycam-ai"
+CONFIG_DIR="$HOME/.config/ophanim-av"
+STATE_DIR="$HOME/.local/state/ophanim-av"
 BIN_DIR="$HOME/.local/bin"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 DESKTOP_DIR="$HOME/.local/share/applications"
@@ -87,7 +87,7 @@ fi
 "$VENV_DIR/bin/yolo" settings analytics=False >/dev/null 2>&1 || true
 
 printf '[5/9] Writing the indexer and VLC review player...\n'
-cat > "$APP_DIR/bodycam_ai.py" <<'PY_INDEXER'
+cat > "$APP_DIR/ophanim_av.py" <<'PY_INDEXER'
 #!/usr/bin/env python3
 from __future__ import annotations
 
@@ -810,9 +810,9 @@ def process_media(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Local bodycam media transcription and vision indexer")
-    parser.add_argument("--source", type=Path, default=Path(os.environ.get("BODYCAM_SOURCE", ".")))
-    parser.add_argument("--derived", type=Path, default=Path(os.environ.get("BODYCAM_DERIVED", "./derived")))
+    parser = argparse.ArgumentParser(description="Local ophanim media transcription and vision indexer")
+    parser.add_argument("--source", type=Path, default=Path(os.environ.get("OPHANIM_AV_SOURCE", ".")))
+    parser.add_argument("--derived", type=Path, default=Path(os.environ.get("OPHANIM_AV_DERIVED", "./derived")))
     parser.add_argument("--whisper-model", default=os.environ.get("WHISPER_MODEL", "large-v3"))
     parser.add_argument("--object-model", default=os.environ.get("YOLO_MODEL", "yolo11s.pt"))
     parser.add_argument("--object-stride", type=int, default=int(os.environ.get("YOLO_STRIDE", "3")))
@@ -844,7 +844,7 @@ def main() -> int:
     conn = init_db(db_path)
     json_dump(derived / "system-manifest.json", system_manifest())
 
-    token_path = Path(os.environ.get("HF_TOKEN_FILE", "~/.config/bodycam-ai/hf_token")).expanduser()
+    token_path = Path(os.environ.get("HF_TOKEN_FILE", "~/.config/ophanim-av/hf_token")).expanduser()
     hf_token = token_path.read_text(encoding="utf-8").strip() if token_path.is_file() else None
     if args.diarize and not hf_token:
         logging.warning("Diarization enabled but no token exists at %s; skipping diarization", token_path)
@@ -921,7 +921,7 @@ def format_time(seconds: float) -> str:
     return f"{hours:02}:{minutes:02}:{secs:02}"
 
 
-class BodycamPlayer(QMainWindow):
+class OphanimAVPlayer(QMainWindow):
     def __init__(self, db_path: Path) -> None:
         super().__init__()
         self.db_path = db_path
@@ -935,7 +935,7 @@ class BodycamPlayer(QMainWindow):
         self.vlc_instance = vlc.Instance("--no-video-title-show", "--quiet")
         self.player = self.vlc_instance.media_player_new()
 
-        self.setWindowTitle("BODYCAM AI Review Player")
+        self.setWindowTitle("OphanimAV Review Player")
         self.resize(1600, 950)
         self._build_ui()
         self._load_media_list()
@@ -1078,7 +1078,7 @@ class BodycamPlayer(QMainWindow):
             self.review_intervals = json.loads(review_path.read_text(encoding="utf-8")) if review_path.is_file() else []
         except Exception:
             self.review_intervals = []
-        self.setWindowTitle(f"BODYCAM AI Review Player; {path.name}")
+        self.setWindowTitle(f"OphanimAV Review Player; {path.name}")
 
     def _load_transcript(self, media_id: int) -> None:
         self.transcript_list.clear()
@@ -1177,13 +1177,13 @@ class BodycamPlayer(QMainWindow):
 
 
 def main() -> int:
-    derived = Path(os.environ.get("BODYCAM_DERIVED", "./derived")).expanduser().resolve()
+    derived = Path(os.environ.get("OPHANIM_AV_DERIVED", "./derived")).expanduser().resolve()
     db_path = derived / "catalog.sqlite3"
     if not db_path.is_file():
         print(f"Database does not exist: {db_path}", file=sys.stderr)
         return 2
     app = QApplication(sys.argv)
-    window = BodycamPlayer(db_path)
+    window = OphanimAVPlayer(db_path)
     window.show()
     return app.exec()
 
@@ -1192,11 +1192,11 @@ if __name__ == "__main__":
     raise SystemExit(main())
 PY_PLAYER
 
-chmod 700 "$APP_DIR/bodycam_ai.py" "$APP_DIR/player.py"
+chmod 700 "$APP_DIR/ophanim_av.py" "$APP_DIR/player.py"
 
 cat > "$CONFIG_DIR/config.env" <<EOF_CONFIG
-BODYCAM_SOURCE="$SOURCE_DIR"
-BODYCAM_DERIVED="$DERIVED_DIR"
+OPHANIM_AV_SOURCE="$SOURCE_DIR"
+OPHANIM_AV_DERIVED="$DERIVED_DIR"
 WHISPER_MODEL="large-v3"
 YOLO_MODEL="yolo11s.pt"
 YOLO_STRIDE="3"
@@ -1218,9 +1218,9 @@ export HF_HUB_DISABLE_TELEMETRY=1
 export DO_NOT_TRACK=1
 export PYANNOTE_METRICS_ENABLED=0
 export TOKENIZERS_PARALLELISM=false
-export HF_HOME="\$BODYCAM_DERIVED/cache/huggingface"
-export TORCH_HOME="\$BODYCAM_DERIVED/cache/torch"
-export YOLO_CONFIG_DIR="\$BODYCAM_DERIVED/cache/ultralytics"
+export HF_HOME="\$OPHANIM_AV_DERIVED/cache/huggingface"
+export TORCH_HOME="\$OPHANIM_AV_DERIVED/cache/torch"
+export YOLO_CONFIG_DIR="\$OPHANIM_AV_DERIVED/cache/ultralytics"
 mkdir -p "\$HF_HOME" "\$TORCH_HOME" "\$YOLO_CONFIG_DIR"
 CUDA_PY_LIBS="\$("$VENV_DIR/bin/python" - <<'PY_CUDA_LIBS'
 import site
@@ -1239,19 +1239,19 @@ EOF_RUNTIME
 chmod 700 "$APP_DIR/runtime-env.sh"
 
 printf '[6/9] Installing user commands...\n'
-cat > "$BIN_DIR/bodycam-index" <<EOF_INDEX
+cat > "$BIN_DIR/ophanim-index" <<EOF_INDEX
 #!/usr/bin/env bash
 set -Eeuo pipefail
 source "$APP_DIR/runtime-env.sh"
 mkdir -p "$STATE_DIR"
 exec flock -n "$STATE_DIR/index.lock" \
-    "$VENV_DIR/bin/python" "$APP_DIR/bodycam_ai.py" \
-    --source "\$BODYCAM_SOURCE" \
-    --derived "\$BODYCAM_DERIVED" \
+    "$VENV_DIR/bin/python" "$APP_DIR/ophanim_av.py" \
+    --source "\$OPHANIM_AV_SOURCE" \
+    --derived "\$OPHANIM_AV_DERIVED" \
     "\$@"
 EOF_INDEX
 
-cat > "$BIN_DIR/bodycam-player" <<EOF_PLAYER
+cat > "$BIN_DIR/ophanim-player" <<EOF_PLAYER
 #!/usr/bin/env bash
 set -Eeuo pipefail
 source "$APP_DIR/runtime-env.sh"
@@ -1259,42 +1259,42 @@ export QT_QPA_PLATFORM=xcb
 exec "$VENV_DIR/bin/python" "$APP_DIR/player.py" "\$@"
 EOF_PLAYER
 
-cat > "$BIN_DIR/bodycam-status" <<EOF_STATUS
+cat > "$BIN_DIR/ophanim-status" <<EOF_STATUS
 #!/usr/bin/env bash
 set -Eeuo pipefail
 source "$APP_DIR/runtime-env.sh"
 printf 'Service status:\n'
-systemctl --user --no-pager status bodycam-ai-index.service || true
+systemctl --user --no-pager status ophanim-av-index.service || true
 printf '\nTimer status:\n'
-systemctl --user --no-pager status bodycam-ai-index.timer || true
+systemctl --user --no-pager status ophanim-av-index.timer || true
 printf '\nCatalog summary:\n'
-if [[ -f "\$BODYCAM_DERIVED/catalog.sqlite3" ]]; then
-    sqlite3 -header -column "\$BODYCAM_DERIVED/catalog.sqlite3" \
+if [[ -f "\$OPHANIM_AV_DERIVED/catalog.sqlite3" ]]; then
+    sqlite3 -header -column "\$OPHANIM_AV_DERIVED/catalog.sqlite3" \
         "SELECT status, COUNT(*) AS files, ROUND(SUM(duration)/3600.0,2) AS hours FROM media GROUP BY status ORDER BY status;"
 else
     printf 'No catalog exists yet.\n'
 fi
 printf '\nRecent journal:\n'
-journalctl --user-unit=bodycam-ai-index.service -n 30 --no-pager || true
+journalctl --user-unit=ophanim-av-index.service -n 30 --no-pager || true
 EOF_STATUS
 
-cat > "$BIN_DIR/bodycam-log" <<'EOF_LOG'
+cat > "$BIN_DIR/ophanim-log" <<'EOF_LOG'
 #!/usr/bin/env bash
-exec journalctl --user-unit=bodycam-ai-index.service -f -o cat
+exec journalctl --user-unit=ophanim-av-index.service -f -o cat
 EOF_LOG
 
-chmod 700 "$BIN_DIR/bodycam-index" "$BIN_DIR/bodycam-player" "$BIN_DIR/bodycam-status" "$BIN_DIR/bodycam-log"
+chmod 700 "$BIN_DIR/ophanim-index" "$BIN_DIR/ophanim-player" "$BIN_DIR/ophanim-status" "$BIN_DIR/ophanim-log"
 
 printf '[7/9] Creating the recurring systemd user workflow...\n'
-cat > "$SYSTEMD_DIR/bodycam-ai-index.service" <<EOF_SERVICE
+cat > "$SYSTEMD_DIR/ophanim-av-index.service" <<EOF_SERVICE
 [Unit]
-Description=Local BODYCAM transcription, motion, scene, object and sentiment indexer
+Description=Local OphanimAV transcription, motion, scene, object and sentiment indexer
 ConditionPathIsDirectory=$SOURCE_DIR
 
 [Service]
 Type=oneshot
 EnvironmentFile=$CONFIG_DIR/config.env
-ExecStart=$BIN_DIR/bodycam-index
+ExecStart=$BIN_DIR/ophanim-index
 WorkingDirectory=$APP_DIR
 UMask=0077
 Nice=10
@@ -1308,7 +1308,7 @@ TimeoutStartSec=infinity
 WantedBy=default.target
 EOF_SERVICE
 
-cat > "$SYSTEMD_DIR/bodycam-ai-index.timer" <<'EOF_TIMER'
+cat > "$SYSTEMD_DIR/ophanim-av-index.timer" <<'EOF_TIMER'
 [Unit]
 Description=Re-index BODYCAM media every 30 minutes
 
@@ -1317,28 +1317,28 @@ OnBootSec=5min
 OnUnitActiveSec=30min
 AccuracySec=2min
 Persistent=true
-Unit=bodycam-ai-index.service
+Unit=ophanim-av-index.service
 
 [Install]
 WantedBy=timers.target
 EOF_TIMER
 
 systemctl --user daemon-reload
-systemctl --user enable --now bodycam-ai-index.timer
+systemctl --user enable --now ophanim-av-index.timer
 
 printf '[8/9] Creating the KDE application launcher...\n'
-cat > "$DESKTOP_DIR/bodycam-ai-player.desktop" <<EOF_DESKTOP
+cat > "$DESKTOP_DIR/ophanim-av-player.desktop" <<EOF_DESKTOP
 [Desktop Entry]
 Type=Application
-Name=BODYCAM AI Review Player
+Name=OphanimAV Review Player
 Comment=Review locally indexed media, transcripts and detected events
-Exec=$BIN_DIR/bodycam-player
+Exec=$BIN_DIR/ophanim-player
 Icon=vlc
 Terminal=false
 Categories=AudioVideo;Utility;
 StartupNotify=true
 EOF_DESKTOP
-chmod 600 "$DESKTOP_DIR/bodycam-ai-player.desktop"
+chmod 600 "$DESKTOP_DIR/ophanim-av-player.desktop"
 update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
 
 printf '[9/9] Running compatibility checks...\n'
@@ -1362,7 +1362,7 @@ print("libVLC:", vlc.libvlc_get_version().decode())
 PY_SMOKE
 
 if [[ "$RUN_NOW" == "1" && -d "$SOURCE_DIR" ]]; then
-    systemctl --user start --no-block bodycam-ai-index.service
+    systemctl --user start --no-block ophanim-av-index.service
     printf '\nIndexing was started in the background.\n'
 else
     printf '\nIndexing was not started automatically.\n'
@@ -1371,10 +1371,10 @@ fi
 cat <<EOF_DONE
 
 Installed commands:
-  bodycam-status       Show service, timer and catalog status
-  bodycam-log          Follow indexing output
-  bodycam-index        Run or resume indexing manually
-  bodycam-player       Open the indexed VLC review player
+  ophanim-status       Show service, timer and catalog status
+  ophanim-log          Follow indexing output
+  ophanim-index        Run or resume indexing manually
+  ophanim-player       Open the indexed VLC review player
 
 Source:
   $SOURCE_DIR
@@ -1389,5 +1389,5 @@ Then change ENABLE_DIARIZATION="0" to "1" in:
   $CONFIG_DIR/config.env
 
 Review progress now with:
-  bodycam-log
+  ophanim-log
 EOF_DONE

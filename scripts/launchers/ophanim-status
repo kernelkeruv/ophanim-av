@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+source "/home/user/dev/ophanim-av/runtime-env.sh"
+printf 'Service status:\n'
+systemctl --user --no-pager status ophanim-av-index.service || true
+printf '\nTimer status:\n'
+systemctl --user --no-pager status ophanim-av-index.timer || true
+printf '\nCatalog summary:\n'
+if [[ -f "$OPHANIM_AV_DERIVED/catalog.sqlite3" ]]; then
+    sqlite3 -header -column "$OPHANIM_AV_DERIVED/catalog.sqlite3"         "SELECT status, COUNT(*) AS files, ROUND(SUM(duration)/3600.0,2) AS hours FROM media GROUP BY status ORDER BY status;"
+else
+    printf 'No catalog exists yet.\n'
+fi
+printf '\nRecent journal:\n'
+journalctl --user-unit=ophanim-av-index.service -n 30 --no-pager || true

@@ -1,0 +1,12 @@
+[Unit]
+Description=Queue another OphanimAV indexing pass after the active pass
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -lc 'while systemctl --user is-active --quiet ophanim-av-index.service; do sleep 15; done; systemctl --user start ophanim-av-index.service'
+TimeoutStartSec=infinity
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true

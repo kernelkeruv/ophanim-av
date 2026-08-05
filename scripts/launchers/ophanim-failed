@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-source "$HOME/dev/bodycam-ai/runtime-env.sh"
-sqlite3 -header -column "$BODYCAM_DERIVED/catalog.sqlite3" '
+source "$HOME/dev/ophanim-av/runtime-env.sh"
+sqlite3 -header -column "$OPHANIM_AV_DERIVED/catalog.sqlite3" '
 SELECT
     id,
     status,

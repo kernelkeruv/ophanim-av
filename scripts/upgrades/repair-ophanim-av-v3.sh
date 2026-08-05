@@ -3,11 +3,11 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-APP_DIR="$HOME/dev/bodycam-ai"
-CONFIG_DIR="$HOME/.config/bodycam-ai"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bodycam-ai"
+APP_DIR="$HOME/dev/ophanim-av"
+CONFIG_DIR="$HOME/.config/ophanim-av"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ophanim-av"
 BIN_DIR="$HOME/.local/bin"
-DERIVED="/path/to/bodycam-ai-derived"
+DERIVED="/path/to/ophanim-av-derived"
 DB="$DERIVED/catalog.sqlite3"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP="$APP_DIR/backups/clickable-transcript-vision-v3-$TIMESTAMP"
@@ -18,7 +18,7 @@ fail() {
 }
 
 for required in \
-    "$APP_DIR/bodycam_ai.py" \
+    "$APP_DIR/ophanim_av.py" \
     "$APP_DIR/player.py" \
     "$APP_DIR/.venv/bin/python" \
     "$APP_DIR/runtime-env.sh" \
@@ -28,7 +28,7 @@ do
 done
 
 printf '[1/10] Stopping the current indexer and player...\n'
-systemctl --user stop bodycam-ai-index.timer bodycam-ai-index.service 2>/dev/null || true
+systemctl --user stop ophanim-av-index.timer ophanim-av-index.service 2>/dev/null || true
 pkill -f "$APP_DIR/player.py" 2>/dev/null || true
 sleep 2
 
@@ -86,7 +86,7 @@ chmod 0700 "$APP_DIR/runtime-env.sh"
 
 printf '[2/10] Backing up application code and SQLite catalog...\n'
 install -d -m 0700 "$BACKUP" "$STATE_DIR" "$BIN_DIR"
-cp -a -- "$APP_DIR/bodycam_ai.py" "$BACKUP/bodycam_ai.py"
+cp -a -- "$APP_DIR/ophanim_av.py" "$BACKUP/ophanim_av.py"
 cp -a -- "$APP_DIR/player.py" "$BACKUP/player.py"
 cp -a -- "$APP_DIR/runtime-env.sh" "$BACKUP/runtime-env.sh"
 cp -a -- "$CONFIG_DIR/config.env" "$BACKUP/config.env"
@@ -298,7 +298,7 @@ if 'retry_paths = {' not in text:
 path.write_text(text,encoding='utf-8')
 PY_PATCH
 
-"$APP_DIR/.venv/bin/python" "$BACKUP/patch-indexer.py" "$APP_DIR/bodycam_ai.py"
+"$APP_DIR/.venv/bin/python" "$BACKUP/patch-indexer.py" "$APP_DIR/ophanim_av.py"
 
 printf '[3A/10] Patching CUDA OOM fallback, quiet-audio recovery, and model cleanup...\n'
 cat > "$BACKUP/patch-memory-safety.py" <<'PY_MEMORY'
@@ -624,7 +624,7 @@ text=text.replace('end.get_seconds()', 'end.seconds')
 path.write_text(text,encoding='utf-8')
 
 PY_MEMORY
-"$APP_DIR/.venv/bin/python" "$BACKUP/patch-memory-safety.py" "$APP_DIR/bodycam_ai.py"
+"$APP_DIR/.venv/bin/python" "$BACKUP/patch-memory-safety.py" "$APP_DIR/ophanim_av.py"
 
 printf '[4/10] Installing the upgraded clickable-transcript player...\n'
 cat > "$APP_DIR/player.py" <<'PY_PLAYER'
@@ -684,7 +684,7 @@ def sql_table_exists(conn: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
-class BodycamPlayer(QMainWindow):
+class OphanimAVPlayer(QMainWindow):
     def __init__(self, db_path: Path) -> None:
         super().__init__()
         self.db_path = db_path
@@ -710,7 +710,7 @@ class BodycamPlayer(QMainWindow):
         )
         self.player = self.vlc_instance.media_player_new()
 
-        self.setWindowTitle("BODYCAM AI Review Player")
+        self.setWindowTitle("OphanimAV Review Player")
         self.resize(1720, 980)
         self._build_ui()
         self._refresh_catalog(force=True)
@@ -950,7 +950,7 @@ class BodycamPlayer(QMainWindow):
             )
         except Exception:
             self.review_intervals = []
-        self.setWindowTitle(f"BODYCAM AI Review Player; {source_path.name}")
+        self.setWindowTitle(f"OphanimAV Review Player; {source_path.name}")
 
     def _reload_current_at_same_time(self) -> None:
         if self.current_media_id is None:
@@ -1218,13 +1218,13 @@ class BodycamPlayer(QMainWindow):
 
 
 def main() -> int:
-    derived = Path(os.environ.get("BODYCAM_DERIVED", "./derived")).expanduser().resolve()
+    derived = Path(os.environ.get("OPHANIM_AV_DERIVED", "./derived")).expanduser().resolve()
     db_path = derived / "catalog.sqlite3"
     if not db_path.is_file():
         print(f"Database does not exist: {db_path}", file=sys.stderr)
         return 2
     app = QApplication(sys.argv)
-    window = BodycamPlayer(db_path)
+    window = OphanimAVPlayer(db_path)
     window.show()
     return app.exec()
 
@@ -1233,7 +1233,7 @@ if __name__ == "__main__":
     raise SystemExit(main())
 PY_PLAYER
 
-chmod 0700 "$APP_DIR/bodycam_ai.py" "$APP_DIR/player.py"
+chmod 0700 "$APP_DIR/ophanim_av.py" "$APP_DIR/player.py"
 
 printf '[5/10] Migrating the catalog and backfilling existing word timestamps...\n'
 "$APP_DIR/.venv/bin/python" - "$DB" <<'PY_MIGRATE'
@@ -1332,11 +1332,11 @@ conn.close()
 PY_MIGRATE
 
 printf '[6/10] Installing useful maintenance commands...\n'
-cat > "$BIN_DIR/bodycam-failed" <<'FAILED_CMD'
+cat > "$BIN_DIR/ophanim-failed" <<'FAILED_CMD'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-source "$HOME/dev/bodycam-ai/runtime-env.sh"
-sqlite3 -header -column "$BODYCAM_DERIVED/catalog.sqlite3" '
+source "$HOME/dev/ophanim-av/runtime-env.sh"
+sqlite3 -header -column "$OPHANIM_AV_DERIVED/catalog.sqlite3" '
 SELECT
     id,
     status,
@@ -1349,11 +1349,11 @@ ORDER BY indexed_at DESC;
 '
 FAILED_CMD
 
-cat > "$BIN_DIR/bodycam-retry-incomplete" <<'RETRY_CMD'
+cat > "$BIN_DIR/ophanim-retry-incomplete" <<'RETRY_CMD'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-APP_DIR="$HOME/dev/bodycam-ai"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bodycam-ai"
+APP_DIR="$HOME/dev/ophanim-av"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ophanim-av"
 source "$APP_DIR/runtime-env.sh"
 exec 9>"$STATE_DIR/index.lock"
 if ! flock -n 9; then
@@ -1361,17 +1361,17 @@ if ! flock -n 9; then
     exit 0
 fi
 exec "$APP_DIR/.venv/bin/python" \
-    "$APP_DIR/bodycam_ai.py" \
-    --source "$BODYCAM_SOURCE" \
-    --derived "$BODYCAM_DERIVED" \
+    "$APP_DIR/ophanim_av.py" \
+    --source "$OPHANIM_AV_SOURCE" \
+    --derived "$OPHANIM_AV_DERIVED" \
     --retry-incomplete
 RETRY_CMD
 
-chmod 0700 "$BIN_DIR/bodycam-failed" "$BIN_DIR/bodycam-retry-incomplete"
+chmod 0700 "$BIN_DIR/ophanim-failed" "$BIN_DIR/ophanim-retry-incomplete"
 
 printf '[7/10] Validating Python syntax and imports...\n'
 "$APP_DIR/.venv/bin/python" -m py_compile \
-    "$APP_DIR/bodycam_ai.py" \
+    "$APP_DIR/ophanim_av.py" \
     "$APP_DIR/player.py"
 
 "$APP_DIR/.venv/bin/python" - <<'PY_CHECK'
@@ -1409,12 +1409,12 @@ ORDER BY kind;
 
 printf '[9/10] Restarting recurring indexing...\n'
 systemctl --user daemon-reload
-systemctl --user enable --now bodycam-ai-index.timer
-systemctl --user start --no-block bodycam-ai-index.service
+systemctl --user enable --now ophanim-av-index.timer
+systemctl --user start --no-block ophanim-av-index.service
 
 printf '[10/10] Opening the upgraded player...\n'
 PLAYER_LOG="$STATE_DIR/player-v2.log"
-nohup "$BIN_DIR/bodycam-player" >"$PLAYER_LOG" 2>&1 &
+nohup "$BIN_DIR/ophanim-player" >"$PLAYER_LOG" 2>&1 &
 PLAYER_PID=$!
 sleep 4
 if ! kill -0 "$PLAYER_PID" 2>/dev/null; then
@@ -1423,7 +1423,7 @@ if ! kill -0 "$PLAYER_PID" 2>/dev/null; then
     exit 1
 fi
 
-printf '\n[OK] BODYCAM AI v3 repair and upgrade installed.\n'
+printf '\n[OK] OphanimAV v3 repair and upgrade installed.\n'
 printf 'Player PID: %s\n' "$PLAYER_PID"
 printf 'Player log: %s\n' "$PLAYER_LOG"
 printf 'Backup: %s\n' "$BACKUP"
@@ -1433,8 +1433,8 @@ printf '  Click any object, motion, speech, or scene event to seek.\n'
 printf '  Completed analyzed videos automatically switch to annotated-preview.mp4 with boxes and motion state.\n'
 printf '  The player refreshes every three seconds; Whisper uses large-v3 INT8/FP16 with CPU fallback on CUDA OOM.\n'
 printf '\nCommands:\n'
-printf '  bodycam-status\n'
-printf '  bodycam-log\n'
-printf '  bodycam-failed\n'
-printf '  bodycam-retry-incomplete\n'
-printf '  bodycam-player\n'
+printf '  ophanim-status\n'
+printf '  ophanim-log\n'
+printf '  ophanim-failed\n'
+printf '  ophanim-retry-incomplete\n'
+printf '  ophanim-player\n'

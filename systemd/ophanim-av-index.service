@@ -1,12 +1,12 @@
 [Unit]
-Description=Local BODYCAM transcription, motion, scene, object and sentiment indexer
+Description=Local OphanimAV transcription, motion, scene, object and sentiment indexer
 ConditionPathIsDirectory=/path/to/media
 
 [Service]
 Type=oneshot
-EnvironmentFile=/home/user/.config/bodycam-ai/config.env
-ExecStart=/home/user/.local/bin/bodycam-index
-WorkingDirectory=/home/user/dev/bodycam-ai
+EnvironmentFile=/home/user/.config/ophanim-av/config.env
+ExecStart=/home/user/.local/bin/ophanim-index
+WorkingDirectory=/home/user/dev/ophanim-av
 UMask=0077
 Nice=10
 IOSchedulingClass=best-effort

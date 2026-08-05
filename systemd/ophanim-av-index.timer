@@ -6,7 +6,7 @@ OnBootSec=5min
 OnUnitActiveSec=30min
 AccuracySec=2min
 Persistent=true
-Unit=bodycam-ai-index.service
+Unit=ophanim-av-index.service
 
 [Install]
 WantedBy=timers.target

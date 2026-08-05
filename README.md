@@ -1,4 +1,4 @@
-# BODYCAM AI Reviewer
+# OphanimAV Reviewer
 
 A local-first media review application built around libVLC, Faster-Whisper, PySide6, OpenCV and Ultralytics. It indexes audio and video, creates timed transcripts, provides clickable word seeking, detects scenes, motion and objects, and preserves original media as read-only input.
 
@@ -8,9 +8,9 @@ This repository contains source code and deployment templates only. It intention
 
 ## Repository layout
 
-- `src/bodycam_ai.py`; indexing, transcription and analysis pipeline.
+- `src/ophanim_av.py`; indexing, transcription and analysis pipeline.
 - `src/player.py`; PySide6 and libVLC review interface.
-- `scripts/install-bodycam-ai.sh`; Fedora-oriented installer snapshot, when available.
+- `scripts/install-ophanim-av.sh`; Fedora-oriented installer snapshot, when available.
 - `scripts/launchers/`; user command wrappers.
 - `scripts/upgrades/`; migration and repair scripts.
 - `systemd/`; user service and timer templates.

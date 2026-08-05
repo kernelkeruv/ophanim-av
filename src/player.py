@@ -238,7 +238,7 @@ def sql_table_exists(conn: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
-class BodycamPlayer(QMainWindow):
+class OphanimAVPlayer(QMainWindow):
     def __init__(self, db_path: Path) -> None:
         super().__init__()
         self.db_path = db_path
@@ -267,7 +267,7 @@ class BodycamPlayer(QMainWindow):
         )
         self.player = self.vlc_instance.media_player_new()
 
-        self.setWindowTitle("BODYCAM AI Review Player")
+        self.setWindowTitle("OphanimAV Review Player")
         self.resize(1720, 980)
         self._build_ui()
         self._refresh_catalog(force=True)
@@ -578,12 +578,12 @@ class BodycamPlayer(QMainWindow):
 
     def _index_now(self, quiet: bool = False) -> None:
         active = subprocess.run(
-            ["systemctl", "--user", "is-active", "--quiet", "bodycam-ai-index.service"],
+            ["systemctl", "--user", "is-active", "--quiet", "ophanim-av-index.service"],
             check=False,
         ).returncode == 0
         if active:
             queued = subprocess.run(
-                ["systemctl", "--user", "start", "bodycam-ai-rescan.service"],
+                ["systemctl", "--user", "start", "ophanim-av-rescan.service"],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -605,7 +605,7 @@ class BodycamPlayer(QMainWindow):
                     QMessageBox.critical(self, "Could not queue rescan", message)
             return
         result = subprocess.run(
-            ["systemctl", "--user", "start", "bodycam-ai-index.service"],
+            ["systemctl", "--user", "start", "ophanim-av-index.service"],
             capture_output=True,
             text=True,
             check=False,
@@ -682,7 +682,7 @@ class BodycamPlayer(QMainWindow):
             )
         except Exception:
             self.review_intervals = []
-        self.setWindowTitle(f"BODYCAM AI Review Player; {source_path.name}")
+        self.setWindowTitle(f"OphanimAV Review Player; {source_path.name}")
 
     def _reload_current_at_same_time(self) -> None:
         if self.current_media_id is None:
@@ -950,13 +950,13 @@ class BodycamPlayer(QMainWindow):
 
 
 def main() -> int:
-    derived = Path(os.environ.get("BODYCAM_DERIVED", "./derived")).expanduser().resolve()
+    derived = Path(os.environ.get("OPHANIM_AV_DERIVED", "./derived")).expanduser().resolve()
     db_path = derived / "catalog.sqlite3"
     if not db_path.is_file():
         print(f"Database does not exist: {db_path}", file=sys.stderr)
         return 2
     app = QApplication(sys.argv)
-    window = BodycamPlayer(db_path)
+    window = OphanimAVPlayer(db_path)
     window.show()
     return app.exec()
 

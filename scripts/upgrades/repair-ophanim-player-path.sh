@@ -2,15 +2,15 @@
 set -Eeuo pipefail
 umask 077
 
-APP_DIR="$HOME/dev/bodycam-ai"
-CONFIG_DIR="$HOME/.config/bodycam-ai"
-STATE_DIR="$HOME/.local/state/bodycam-ai"
+APP_DIR="$HOME/dev/ophanim-av"
+CONFIG_DIR="$HOME/.config/ophanim-av"
+STATE_DIR="$HOME/.local/state/ophanim-av"
 BIN_DIR="$HOME/.local/bin"
 
 CONFIG_FILE="$CONFIG_DIR/config.env"
 RUNTIME_FILE="$APP_DIR/runtime-env.sh"
-PLAYER_FILE="$BIN_DIR/bodycam-player"
-INDEX_FILE="$BIN_DIR/bodycam-index"
+PLAYER_FILE="$BIN_DIR/ophanim-player"
+INDEX_FILE="$BIN_DIR/ophanim-index"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP_DIR="$APP_DIR/backups/runtime-path-fix-$TIMESTAMP"
@@ -24,7 +24,7 @@ for required_file in \
     "$CONFIG_FILE" \
     "$RUNTIME_FILE" \
     "$APP_DIR/player.py" \
-    "$APP_DIR/bodycam_ai.py"
+    "$APP_DIR/ophanim_av.py"
 do
     [[ -f "$required_file" ]] ||
         die "Required file not found: $required_file"
@@ -39,10 +39,10 @@ cp -a -- "$CONFIG_FILE" "$BACKUP_DIR/config.env"
 cp -a -- "$RUNTIME_FILE" "$BACKUP_DIR/runtime-env.sh"
 
 [[ -f "$PLAYER_FILE" ]] &&
-    cp -a -- "$PLAYER_FILE" "$BACKUP_DIR/bodycam-player"
+    cp -a -- "$PLAYER_FILE" "$BACKUP_DIR/ophanim-player"
 
 [[ -f "$INDEX_FILE" ]] &&
-    cp -a -- "$INDEX_FILE" "$BACKUP_DIR/bodycam-index"
+    cp -a -- "$INDEX_FILE" "$BACKUP_DIR/ophanim-index"
 
 printf '[2/7] Exporting variables loaded from config.env...\n'
 
@@ -69,20 +69,20 @@ if exported_block not in text:
     runtime_path.write_text(text, encoding="utf-8")
 PYTHON_PATCH
 
-printf '[3/7] Rebuilding bodycam-player launcher...\n'
+printf '[3/7] Rebuilding ophanim-player launcher...\n'
 
 cat > "$PLAYER_FILE" <<'PLAYER_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_DIR="$HOME/dev/bodycam-ai"
-STATE_DIR="$HOME/.local/state/bodycam-ai"
+APP_DIR="$HOME/dev/ophanim-av"
+STATE_DIR="$HOME/.local/state/ophanim-av"
 
 source "$APP_DIR/runtime-env.sh"
 
 export \
-    BODYCAM_SOURCE \
-    BODYCAM_DERIVED \
+    OPHANIM_AV_SOURCE \
+    OPHANIM_AV_DERIVED \
     WHISPER_MODEL \
     YOLO_MODEL \
     YOLO_STRIDE \
@@ -91,7 +91,7 @@ export \
 
 export QT_QPA_PLATFORM=xcb
 
-DATABASE="$BODYCAM_DERIVED/catalog.sqlite3"
+DATABASE="$OPHANIM_AV_DERIVED/catalog.sqlite3"
 
 if [[ ! -f "$DATABASE" ]]; then
     printf 'ERROR: BODYCAM catalog does not exist:\n  %s\n' "$DATABASE" >&2
@@ -105,20 +105,20 @@ exec "$APP_DIR/.venv/bin/python" \
     "$@"
 PLAYER_EOF
 
-printf '[4/7] Rebuilding bodycam-index launcher...\n'
+printf '[4/7] Rebuilding ophanim-index launcher...\n'
 
 cat > "$INDEX_FILE" <<'INDEX_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_DIR="$HOME/dev/bodycam-ai"
-STATE_DIR="$HOME/.local/state/bodycam-ai"
+APP_DIR="$HOME/dev/ophanim-av"
+STATE_DIR="$HOME/.local/state/ophanim-av"
 
 source "$APP_DIR/runtime-env.sh"
 
 export \
-    BODYCAM_SOURCE \
-    BODYCAM_DERIVED \
+    OPHANIM_AV_SOURCE \
+    OPHANIM_AV_DERIVED \
     WHISPER_MODEL \
     YOLO_MODEL \
     YOLO_STRIDE \
@@ -135,15 +135,15 @@ exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
     printf 'BODYCAM indexing is already running.\n'
     printf 'Use these commands instead:\n'
-    printf '  bodycam-status\n'
-    printf '  bodycam-log\n'
+    printf '  ophanim-status\n'
+    printf '  ophanim-log\n'
     exit 0
 fi
 
 exec "$APP_DIR/.venv/bin/python" \
-    "$APP_DIR/bodycam_ai.py" \
-    --source "$BODYCAM_SOURCE" \
-    --derived "$BODYCAM_DERIVED" \
+    "$APP_DIR/ophanim_av.py" \
+    --source "$OPHANIM_AV_SOURCE" \
+    --derived "$OPHANIM_AV_DERIVED" \
     "$@"
 INDEX_EOF
 
@@ -158,27 +158,27 @@ bash -n "$INDEX_FILE"
 RUNTIME_REPORT="$(
     bash -c '
         set -Eeuo pipefail
-        source "$HOME/dev/bodycam-ai/runtime-env.sh"
-        printf "BODYCAM_SOURCE=%s\n" "$BODYCAM_SOURCE"
-        printf "BODYCAM_DERIVED=%s\n" "$BODYCAM_DERIVED"
-        env | grep "^BODYCAM_DERIVED="
+        source "$HOME/dev/ophanim-av/runtime-env.sh"
+        printf "OPHANIM_AV_SOURCE=%s\n" "$OPHANIM_AV_SOURCE"
+        printf "OPHANIM_AV_DERIVED=%s\n" "$OPHANIM_AV_DERIVED"
+        env | grep "^OPHANIM_AV_DERIVED="
     '
 )"
 
 printf '%s\n' "$RUNTIME_REPORT"
 
-BODYCAM_DERIVED="$(
+OPHANIM_AV_DERIVED="$(
     bash -c '
-        source "$HOME/dev/bodycam-ai/runtime-env.sh"
-        printf "%s" "$BODYCAM_DERIVED"
+        source "$HOME/dev/ophanim-av/runtime-env.sh"
+        printf "%s" "$OPHANIM_AV_DERIVED"
     '
 )"
 
-DATABASE="$BODYCAM_DERIVED/catalog.sqlite3"
+DATABASE="$OPHANIM_AV_DERIVED/catalog.sqlite3"
 
-[[ "$BODYCAM_DERIVED" == \
-    "/path/to/bodycam-ai-derived" ]] ||
-    die "Unexpected derived directory: $BODYCAM_DERIVED"
+[[ "$OPHANIM_AV_DERIVED" == \
+    "/path/to/ophanim-av-derived" ]] ||
+    die "Unexpected derived directory: $OPHANIM_AV_DERIVED"
 
 [[ -f "$DATABASE" ]] ||
     die "Catalog is still missing: $DATABASE"
@@ -199,7 +199,7 @@ printf '\nCatalog location:\n  %s\n' "$DATABASE"
 printf 'Catalog size:\n'
 du -h "$DATABASE" "$DATABASE-wal" 2>/dev/null || true
 
-printf '[7/7] Opening BODYCAM AI Review Player...\n'
+printf '[7/7] Opening OphanimAV Review Player...\n'
 
 PLAYER_LOG="$STATE_DIR/player.log"
 

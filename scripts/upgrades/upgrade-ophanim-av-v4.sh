@@ -3,11 +3,11 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-APP_DIR="$HOME/dev/bodycam-ai"
-CONFIG_DIR="$HOME/.config/bodycam-ai"
+APP_DIR="$HOME/dev/ophanim-av"
+CONFIG_DIR="$HOME/.config/ophanim-av"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
-STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/bodycam-ai"
-DERIVED="/path/to/bodycam-ai-derived"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/ophanim-av"
+DERIVED="/path/to/ophanim-av-derived"
 DB="$DERIVED/catalog.sqlite3"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP="$APP_DIR/backups/gui-intake-status-v4-$TIMESTAMP"
@@ -19,7 +19,7 @@ fail() {
 
 for required in \
     "$APP_DIR/player.py" \
-    "$APP_DIR/bodycam_ai.py" \
+    "$APP_DIR/ophanim_av.py" \
     "$APP_DIR/.venv/bin/python" \
     "$DB"
 do
@@ -34,7 +34,7 @@ printf '[2/8] Backing up current code and configuration...\n'
 mkdir -p "$BACKUP" "$SYSTEMD_DIR" "$STATE_DIR"
 chmod 700 "$BACKUP" "$STATE_DIR"
 cp -a "$APP_DIR/player.py" "$BACKUP/player.py"
-cp -a "$APP_DIR/bodycam_ai.py" "$BACKUP/bodycam_ai.py"
+cp -a "$APP_DIR/ophanim_av.py" "$BACKUP/ophanim_av.py"
 [[ -f "$DERIVED/intake-sources.json" ]] && cp -a "$DERIVED/intake-sources.json" "$BACKUP/intake-sources.json"
 
 printf '[3/8] Adding the duplicate-alias catalog migration...\n'
@@ -64,7 +64,7 @@ conn.close()
 PY_MIGRATE
 
 printf '[4/8] Teaching the indexer to read GUI-added sources and suppress duplicate content...\n'
-"$APP_DIR/.venv/bin/python" - "$APP_DIR/bodycam_ai.py" <<'PY_PATCH_INDEXER'
+"$APP_DIR/.venv/bin/python" - "$APP_DIR/ophanim_av.py" <<'PY_PATCH_INDEXER'
 from pathlib import Path
 import re
 import sys
@@ -94,7 +94,7 @@ discover_replacement = '''def discover(source_dir: Path) -> list[Path]:
             if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
         )
 
-    derived_value = os.environ.get("BODYCAM_DERIVED", "").strip()
+    derived_value = os.environ.get("OPHANIM_AV_DERIVED", "").strip()
     if derived_value:
         registry_path = Path(derived_value).expanduser() / "intake-sources.json"
         if registry_path.is_file():
@@ -419,7 +419,7 @@ def sql_table_exists(conn: sqlite3.Connection, name: str) -> bool:
     ).fetchone() is not None
 
 
-class BodycamPlayer(QMainWindow):
+class OphanimAVPlayer(QMainWindow):
     def __init__(self, db_path: Path) -> None:
         super().__init__()
         self.db_path = db_path
@@ -448,7 +448,7 @@ class BodycamPlayer(QMainWindow):
         )
         self.player = self.vlc_instance.media_player_new()
 
-        self.setWindowTitle("BODYCAM AI Review Player")
+        self.setWindowTitle("OphanimAV Review Player")
         self.resize(1720, 980)
         self._build_ui()
         self._refresh_catalog(force=True)
@@ -759,12 +759,12 @@ class BodycamPlayer(QMainWindow):
 
     def _index_now(self, quiet: bool = False) -> None:
         active = subprocess.run(
-            ["systemctl", "--user", "is-active", "--quiet", "bodycam-ai-index.service"],
+            ["systemctl", "--user", "is-active", "--quiet", "ophanim-av-index.service"],
             check=False,
         ).returncode == 0
         if active:
             queued = subprocess.run(
-                ["systemctl", "--user", "start", "bodycam-ai-rescan.service"],
+                ["systemctl", "--user", "start", "ophanim-av-rescan.service"],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -786,7 +786,7 @@ class BodycamPlayer(QMainWindow):
                     QMessageBox.critical(self, "Could not queue rescan", message)
             return
         result = subprocess.run(
-            ["systemctl", "--user", "start", "bodycam-ai-index.service"],
+            ["systemctl", "--user", "start", "ophanim-av-index.service"],
             capture_output=True,
             text=True,
             check=False,
@@ -863,7 +863,7 @@ class BodycamPlayer(QMainWindow):
             )
         except Exception:
             self.review_intervals = []
-        self.setWindowTitle(f"BODYCAM AI Review Player; {source_path.name}")
+        self.setWindowTitle(f"OphanimAV Review Player; {source_path.name}")
 
     def _reload_current_at_same_time(self) -> None:
         if self.current_media_id is None:
@@ -1131,13 +1131,13 @@ class BodycamPlayer(QMainWindow):
 
 
 def main() -> int:
-    derived = Path(os.environ.get("BODYCAM_DERIVED", "./derived")).expanduser().resolve()
+    derived = Path(os.environ.get("OPHANIM_AV_DERIVED", "./derived")).expanduser().resolve()
     db_path = derived / "catalog.sqlite3"
     if not db_path.is_file():
         print(f"Database does not exist: {db_path}", file=sys.stderr)
         return 2
     app = QApplication(sys.argv)
-    window = BodycamPlayer(db_path)
+    window = OphanimAVPlayer(db_path)
     window.show()
     return app.exec()
 
@@ -1147,13 +1147,13 @@ if __name__ == "__main__":
 PY_PLAYER
 
 printf '[6/8] Installing the non-disruptive rescan queue...\n'
-cat > "$SYSTEMD_DIR/bodycam-ai-rescan.service" <<'UNIT_RESCAN'
+cat > "$SYSTEMD_DIR/ophanim-av-rescan.service" <<'UNIT_RESCAN'
 [Unit]
-Description=Queue another BODYCAM AI indexing pass after the active pass
+Description=Queue another OphanimAV indexing pass after the active pass
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash -lc 'while systemctl --user is-active --quiet bodycam-ai-index.service; do sleep 15; done; systemctl --user start bodycam-ai-index.service'
+ExecStart=/bin/bash -lc 'while systemctl --user is-active --quiet ophanim-av-index.service; do sleep 15; done; systemctl --user start ophanim-av-index.service'
 TimeoutStartSec=infinity
 Nice=15
 IOSchedulingClass=best-effort
@@ -1162,19 +1162,19 @@ NoNewPrivileges=true
 PrivateTmp=true
 UNIT_RESCAN
 
-chmod 700 "$APP_DIR/player.py" "$APP_DIR/bodycam_ai.py"
-chmod 600 "$SYSTEMD_DIR/bodycam-ai-rescan.service"
+chmod 700 "$APP_DIR/player.py" "$APP_DIR/ophanim_av.py"
+chmod 600 "$SYSTEMD_DIR/ophanim-av-rescan.service"
 
 printf '[7/8] Validating Python and systemd configuration...\n'
 "$APP_DIR/.venv/bin/python" -m py_compile \
     "$APP_DIR/player.py" \
-    "$APP_DIR/bodycam_ai.py"
-systemd-analyze --user verify "$SYSTEMD_DIR/bodycam-ai-rescan.service" >/dev/null
+    "$APP_DIR/ophanim_av.py"
+systemd-analyze --user verify "$SYSTEMD_DIR/ophanim-av-rescan.service" >/dev/null
 systemctl --user daemon-reload
 
 printf '[8/8] Opening the upgraded review player...\n'
 PLAYER_LOG="$STATE_DIR/player.log"
-nohup "$HOME/.local/bin/bodycam-player" >"$PLAYER_LOG" 2>&1 &
+nohup "$HOME/.local/bin/ophanim-player" >"$PLAYER_LOG" 2>&1 &
 PLAYER_PID=$!
 sleep 3
 
@@ -1186,7 +1186,7 @@ fi
 
 cat <<EOF_DONE
 
-[OK] BODYCAM AI GUI intake upgrade installed.
+[OK] OphanimAV GUI intake upgrade installed.
 
 Added GUI controls:
   Add files     Select one or more audio or video files

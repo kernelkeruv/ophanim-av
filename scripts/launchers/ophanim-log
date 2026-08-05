@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec journalctl --user-unit=ophanim-av-index.service -f -o cat

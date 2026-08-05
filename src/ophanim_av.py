@@ -782,7 +782,7 @@ def discover(source_dir: Path) -> list[Path]:
             if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
         )
 
-    derived_value = os.environ.get("BODYCAM_DERIVED", "").strip()
+    derived_value = os.environ.get("OPHANIM_AV_DERIVED", "").strip()
     if derived_value:
         registry_path = Path(derived_value).expanduser() / "intake-sources.json"
         if registry_path.is_file():
@@ -1036,9 +1036,9 @@ def process_media(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Local bodycam media transcription and vision indexer")
-    parser.add_argument("--source", type=Path, default=Path(os.environ.get("BODYCAM_SOURCE", ".")))
-    parser.add_argument("--derived", type=Path, default=Path(os.environ.get("BODYCAM_DERIVED", "./derived")))
+    parser = argparse.ArgumentParser(description="Local ophanim media transcription and vision indexer")
+    parser.add_argument("--source", type=Path, default=Path(os.environ.get("OPHANIM_AV_SOURCE", ".")))
+    parser.add_argument("--derived", type=Path, default=Path(os.environ.get("OPHANIM_AV_DERIVED", "./derived")))
     parser.add_argument("--whisper-model", default=os.environ.get("WHISPER_MODEL", "large-v3"))
     parser.add_argument("--object-model", default=os.environ.get("YOLO_MODEL", "yolo11s.pt"))
     parser.add_argument("--object-stride", type=int, default=int(os.environ.get("YOLO_STRIDE", "3")))
@@ -1075,7 +1075,7 @@ def main() -> int:
     conn = init_db(db_path)
     json_dump(derived / "system-manifest.json", system_manifest())
 
-    token_path = Path(os.environ.get("HF_TOKEN_FILE", "~/.config/bodycam-ai/hf_token")).expanduser()
+    token_path = Path(os.environ.get("HF_TOKEN_FILE", "~/.config/ophanim-av/hf_token")).expanduser()
     hf_token = token_path.read_text(encoding="utf-8").strip() if token_path.is_file() else None
     if args.diarize and not hf_token:
         logging.warning("Diarization enabled but no token exists at %s; skipping diarization", token_path)
