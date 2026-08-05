@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+source "$HOME/dev/bodycam-ai/runtime-env.sh"
+sqlite3 -header -column "$BODYCAM_DERIVED/catalog.sqlite3" '
+SELECT
+    id,
+    status,
+    ROUND(duration / 60.0, 2) AS minutes,
+    source_path,
+    COALESCE(error, "") AS error
+FROM media
+WHERE status IN ("failed", "processing")
+ORDER BY indexed_at DESC;
+'

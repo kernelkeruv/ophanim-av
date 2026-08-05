@@ -1,0 +1,76 @@
+# Python and local environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+config.env
+hf_token
+*_token
+*.pem
+*.key
+
+# Original audio and video
+*.aac
+*.aax
+*.avi
+*.flac
+*.m2ts
+*.m4a
+*.m4v
+*.mkv
+*.mov
+*.mp3
+*.mp4
+*.mts
+*.ogg
+*.opus
+*.ts
+*.wav
+*.webm
+*.wma
+
+# Captions, transcripts and evidence-derived output
+*.srt
+*.vtt
+*.jsonl
+catalog.sqlite3*
+*.sqlite
+*.sqlite3
+*.db
+intake-sources.json
+system-manifest.json
+items/
+derived/
+exports/
+transcripts/
+subtitles/
+thumbnails/
+waveforms/
+logs/
+cache/
+backups/
+
+# Model weights and generated ML artifacts
+*.bin
+*.engine
+*.onnx
+*.pt
+*.pth
+*.safetensors
+models/
+weights/
+runs/
+
+# IDE and desktop noise
+.idea/
+.vscode/
+.DS_Store
+*~

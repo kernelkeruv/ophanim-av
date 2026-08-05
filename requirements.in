@@ -1,0 +1,13 @@
+faster-whisper
+ultralytics
+opencv-python
+scenedetect
+transformers
+sentencepiece
+accelerate
+python-vlc
+PySide6
+pyannote.audio
+rich
+tqdm
+pyyaml

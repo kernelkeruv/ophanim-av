@@ -1,0 +1,11 @@
+# Security and privacy
+
+Do not submit audio, video, transcripts, captions, screenshots containing private evidence, database files, model caches, tokens, credentials, hostnames, serial numbers or personal filesystem paths.
+
+Run the following command before every commit and push:
+
+```bash
+bash scripts/privacy-check.sh
+```
+
+The repository also installs the same check as a local pre-push hook.

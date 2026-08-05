@@ -1,0 +1,16 @@
+name: Privacy guard
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  privacy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject media, evidence, secrets and oversized binaries
+        run: bash scripts/privacy-check.sh

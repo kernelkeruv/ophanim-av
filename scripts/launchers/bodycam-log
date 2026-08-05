@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec journalctl --user-unit=bodycam-ai-index.service -f -o cat

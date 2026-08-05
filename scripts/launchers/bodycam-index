@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP_DIR="$HOME/dev/bodycam-ai"
+STATE_DIR="$HOME/.local/state/bodycam-ai"
+
+source "$APP_DIR/runtime-env.sh"
+
+export \
+    BODYCAM_SOURCE \
+    BODYCAM_DERIVED \
+    WHISPER_MODEL \
+    YOLO_MODEL \
+    YOLO_STRIDE \
+    ENABLE_DIARIZATION \
+    HF_TOKEN_FILE
+
+mkdir -p "$STATE_DIR"
+chmod 700 "$STATE_DIR"
+
+LOCK_FILE="$STATE_DIR/index.lock"
+
+exec 9>"$LOCK_FILE"
+
+if ! flock -n 9; then
+    printf 'BODYCAM indexing is already running.\n'
+    printf 'Use these commands instead:\n'
+    printf '  bodycam-status\n'
+    printf '  bodycam-log\n'
+    exit 0
+fi
+
+exec "$APP_DIR/.venv/bin/python" \
+    "$APP_DIR/bodycam_ai.py" \
+    --source "$BODYCAM_SOURCE" \
+    --derived "$BODYCAM_DERIVED" \
+    "$@"

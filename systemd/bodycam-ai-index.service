@@ -1,0 +1,19 @@
+[Unit]
+Description=Local BODYCAM transcription, motion, scene, object and sentiment indexer
+ConditionPathIsDirectory=/path/to/media
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/user/.config/bodycam-ai/config.env
+ExecStart=/home/user/.local/bin/bodycam-index
+WorkingDirectory=/home/user/dev/bodycam-ai
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target
