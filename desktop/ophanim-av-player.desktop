@@ -2,8 +2,8 @@
 Type=Application
 Name=OphanimAV Review Player
 Comment=Review locally indexed media, transcripts and detected events
-Exec=/home/user/.local/bin/ophanim-player
-Icon=vlc
+Exec=ophanim-player
+Icon=ophanimav
 Terminal=false
 Categories=AudioVideo;Utility;
 StartupNotify=true
