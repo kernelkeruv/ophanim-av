@@ -14,7 +14,7 @@ from pathlib import Path
 
 import vlc
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QDesktopServices
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -270,6 +270,8 @@ class OphanimAVPlayer(QMainWindow):
         self.setWindowTitle("OphanimAV Review Player")
         self.resize(1720, 980)
         self._build_ui()
+        self._apply_theme()
+        self._bind_shortcuts()
         self._refresh_catalog(force=True)
 
         self.timer = QTimer(self)
@@ -325,10 +327,12 @@ class OphanimAVPlayer(QMainWindow):
         self.catalog_label = QLabel("Catalog loading")
         left_layout.addWidget(self.catalog_label)
         self.media_search = QLineEdit()
-        self.media_search.setPlaceholderText("Filter files or status")
+        self.media_search.setPlaceholderText("Filter by filename, folder, or status")
+        self.media_search.setClearButtonEnabled(True)
         self.media_search.textChanged.connect(self._filter_media)
         left_layout.addWidget(self.media_search)
         self.media_list = QListWidget()
+        self.media_list.setAlternatingRowColors(True)
         self.media_list.itemDoubleClicked.connect(self._open_media_item)
         left_layout.addWidget(self.media_list)
         splitter.addWidget(left)
@@ -337,6 +341,15 @@ class OphanimAVPlayer(QMainWindow):
         center_layout = QVBoxLayout(center)
         self.playback_label = QLabel("Open a completed item. Processing items update automatically.")
         center_layout.addWidget(self.playback_label)
+        action_row = QHBoxLayout()
+        self.open_source_button = QPushButton("Open source folder")
+        self.open_source_button.clicked.connect(self._open_source_directory)
+        action_row.addWidget(self.open_source_button)
+        self.open_analysis_button = QPushButton("Open analysis folder")
+        self.open_analysis_button.clicked.connect(self._open_analysis_directory)
+        action_row.addWidget(self.open_analysis_button)
+        action_row.addStretch(1)
+        center_layout.addLayout(action_row)
         self.video_frame = QFrame()
         self.video_frame.setFrameShape(QFrame.Shape.Box)
         self.video_frame.setStyleSheet("background: black;")
@@ -352,6 +365,7 @@ class OphanimAVPlayer(QMainWindow):
         controls.addWidget(self.stop_button)
         self.position = QSlider(Qt.Orientation.Horizontal)
         self.position.setRange(0, 1000)
+        self.position.setToolTip("Drag to seek")
         self.position.sliderPressed.connect(self._slider_pressed)
         self.position.sliderReleased.connect(self._slider_released)
         controls.addWidget(self.position, 1)
@@ -368,9 +382,11 @@ class OphanimAVPlayer(QMainWindow):
         controls.addWidget(self.rate)
         self.use_preview = QCheckBox("Show AI boxes and motion")
         self.use_preview.setChecked(True)
+        self.use_preview.setToolTip("Toggle between source media and annotated AI preview")
         self.use_preview.toggled.connect(self._reload_current_at_same_time)
         controls.addWidget(self.use_preview)
         self.auto_skip = QCheckBox("Auto-skip inactive")
+        self.auto_skip.setToolTip("Skip directly to the next review interval")
         controls.addWidget(self.auto_skip)
         center_layout.addLayout(controls)
         splitter.addWidget(center)
@@ -381,6 +397,7 @@ class OphanimAVPlayer(QMainWindow):
         search_row = QHBoxLayout()
         self.transcript_search = QLineEdit()
         self.transcript_search.setPlaceholderText("Search transcript")
+        self.transcript_search.setClearButtonEnabled(True)
         self.transcript_search.returnPressed.connect(self._find_transcript)
         search_row.addWidget(self.transcript_search)
         self.find_button = QPushButton("Find")
@@ -406,6 +423,51 @@ class OphanimAVPlayer(QMainWindow):
         splitter.addWidget(right)
 
         splitter.setSizes([320, 980, 520])
+
+    def _apply_theme(self) -> None:
+        self.setStyleSheet(
+            """
+            QMainWindow, QWidget {
+                background-color: #10141c;
+                color: #dde7f2;
+            }
+            QMenuBar, QMenu {
+                background-color: #0c1118;
+                color: #dde7f2;
+            }
+            QListWidget, QTextBrowser, QLineEdit, QComboBox, QSlider, QFrame {
+                background-color: #171d28;
+                color: #dde7f2;
+                border: 1px solid #2e3a4f;
+                border-radius: 6px;
+            }
+            QPushButton {
+                background-color: #2c4468;
+                color: #f3f7ff;
+                border: 1px solid #3c5f8d;
+                border-radius: 6px;
+                padding: 5px 10px;
+            }
+            QPushButton:hover {
+                background-color: #355781;
+            }
+            QPushButton:disabled {
+                background-color: #263142;
+                color: #8f9aa8;
+            }
+            QCheckBox {
+                spacing: 6px;
+            }
+            """
+        )
+
+    def _bind_shortcuts(self) -> None:
+        QShortcut(QKeySequence(Qt.Key.Key_Space), self, activated=self._toggle_play)
+        QShortcut(
+            QKeySequence("Ctrl+F"),
+            self,
+            activated=lambda: self.transcript_search.setFocus(Qt.FocusReason.ShortcutFocusReason),
+        )
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

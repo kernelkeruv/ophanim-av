@@ -12,6 +12,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Iterable
@@ -25,6 +26,10 @@ VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".mts", ".m
 
 def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def elapsed_seconds(start: float) -> float:
+    return round(max(0.0, time.perf_counter() - start), 3)
 
 
 def json_dump(path: Path, value: Any) -> None:
@@ -299,7 +304,6 @@ def transcribe(
             "skipped_short_audio": True,
         }
         json_dump(work_dir / "transcription-metadata.json", metadata)
-        write_subtitles(work_dir, segments)
         return segments, metadata
 
     logging.info(
@@ -372,7 +376,6 @@ def transcribe(
             "vad_filter": used_vad,
         }
         json_dump(work_dir / "transcription-metadata.json", metadata)
-        write_subtitles(work_dir, segments)
         return segments, metadata
     finally:
         if model is not None:
@@ -864,6 +867,7 @@ def process_media(
     compute_type: str,
     hf_token: str | None,
 ) -> None:
+    media_started_at = time.perf_counter()
     logging.info("Indexing %s", source)
     digest = sha256_file(source)
     duplicate = conn.execute(
@@ -902,6 +906,8 @@ def process_media(
         )
         return
     probe = ffprobe(source)
+    source_duration = duration_from_probe(probe)
+    source_fps = fps_from_probe(probe) or 30.0
     work_dir = derived / "items" / digest[:2] / digest
     work_dir.mkdir(parents=True, exist_ok=True)
     os.chmod(work_dir, 0o700)
@@ -932,6 +938,8 @@ def process_media(
             "device": device,
             "compute_type": compute_type,
             "object_stride": args.object_stride,
+            "source_fps": source_fps,
+            "source_duration": source_duration,
         },
     }
     json_dump(work_dir / "manifest.json", manifest)
@@ -940,13 +948,23 @@ def process_media(
     all_events: list[dict[str, Any]] = []
     segments: list[dict[str, Any]] = []
     wav_path = work_dir / "audio-16k-mono.wav"
+    performance: dict[str, Any] = {"stages": {}}
+
+    def stage(name: str, func, *stage_args, **stage_kwargs):
+        started = time.perf_counter()
+        try:
+            return func(*stage_args, **stage_kwargs)
+        finally:
+            performance["stages"][name] = elapsed_seconds(started)
 
     if not args.skip_transcription or (args.diarize and hf_token):
-        extract_audio(source, wav_path)
+        stage("extract_audio", extract_audio, source, wav_path)
 
     if not args.skip_transcription:
         try:
-            segments, _ = transcribe(
+            segments, _ = stage(
+                "transcribe",
+                transcribe,
                 wav_path, work_dir, args.whisper_model, device, compute_type
             )
         except Exception as error:
@@ -955,23 +973,25 @@ def process_media(
                     "Whisper CUDA OOM; retrying this file on CPU with int8"
                 )
                 _release_cuda()
-                segments, _ = transcribe(
+                segments, _ = stage(
+                    "transcribe_cpu_fallback",
+                    transcribe,
                     wav_path, work_dir, args.whisper_model, "cpu", "int8"
                 )
             else:
                 raise
         if not args.skip_sentiment and segments:
             try:
-                apply_sentiment(segments, device)
+                stage("sentiment", apply_sentiment, segments, device)
             except Exception:
                 logging.exception("Sentiment analysis failed; continuing")
         if args.diarize and hf_token:
             try:
-                turns = diarize(wav_path, work_dir, hf_token, device)
+                turns = stage("diarize", diarize, wav_path, work_dir, hf_token, device)
                 assign_speakers(segments, turns)
             except Exception:
                 logging.exception("Speaker diarization failed; continuing")
-        write_subtitles(work_dir, segments)
+        stage("write_subtitles", write_subtitles, work_dir, segments)
         add_transcript(conn, media_id, segments)
         add_transcript_words(conn, media_id, segments)
         all_events.extend({
@@ -986,7 +1006,7 @@ def process_media(
     if video_stream(probe):
         if not args.skip_scenes:
             try:
-                scenes = detect_scenes(source, work_dir)
+                scenes = stage("detect_scenes", detect_scenes, source, work_dir)
                 all_events.extend({
                     "start": scene["start"], "end": min(scene["start"] + 1.0, scene["end"]),
                     "kind": "scene", "label": "scene-change", "confidence": None,
@@ -996,7 +1016,7 @@ def process_media(
                 logging.exception("Scene detection failed; continuing")
         if not args.skip_motion:
             try:
-                motion = compensated_motion(source, work_dir)
+                motion = stage("detect_motion", compensated_motion, source, work_dir)
                 all_events.extend({
                     "start": item["start"], "end": item["end"], "kind": "motion",
                     "label": item["label"], "confidence": item.get("confidence"), "metadata": item,
@@ -1005,9 +1025,11 @@ def process_media(
                 logging.exception("Motion analysis failed; continuing")
         if not args.skip_objects:
             try:
-                objects = detect_objects(
+                objects = stage(
+                    "detect_objects",
+                    detect_objects,
                     source, work_dir, args.object_model, device,
-                    fps_from_probe(probe) or 30.0, args.object_stride,
+                    source_fps, args.object_stride,
                 )
                 all_events.extend(objects)
             except Exception as error:
@@ -1017,9 +1039,11 @@ def process_media(
                     )
                     _release_cuda()
                     try:
-                        objects = detect_objects(
+                        objects = stage(
+                            "detect_objects_cpu_fallback",
+                            detect_objects,
                             source, work_dir, args.object_model, "cpu",
-                            fps_from_probe(probe) or 30.0, args.object_stride,
+                            source_fps, args.object_stride,
                         )
                         all_events.extend(objects)
                     except Exception:
@@ -1027,9 +1051,17 @@ def process_media(
                 else:
                     logging.exception("Object tracking failed; continuing")
 
-    add_events(conn, media_id, all_events)
-    review_intervals = merge_review_intervals(all_events, duration_from_probe(probe))
+    stage("add_events", add_events, conn, media_id, all_events)
+    review_intervals = merge_review_intervals(all_events, source_duration)
     json_dump(work_dir / "review-intervals.json", review_intervals)
+    performance["segments"] = len(segments)
+    performance["events"] = len(all_events)
+    performance["source_fps"] = source_fps
+    performance["source_duration"] = source_duration
+    performance["total"] = elapsed_seconds(media_started_at)
+    manifest["analysis"]["performance"] = performance
+    json_dump(work_dir / "performance-metrics.json", performance)
+    json_dump(work_dir / "manifest.json", manifest)
     conn.execute("UPDATE media SET status='complete', error=NULL, indexed_at=? WHERE id=?", (now_iso(), media_id))
     conn.commit()
     logging.info("Complete %s", source)

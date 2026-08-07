@@ -1,0 +1,71 @@
+name: Build installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows EXE/MSI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build Windows artifacts
+        shell: pwsh
+        run: scripts/packaging/build-windows.ps1
+      - name: Upload Windows artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ophanimav-windows-installers
+          path: dist/windows/*
+          if-no-files-found: warn
+
+  linux:
+    name: Linux DEB/RPM/Arch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Linux artifacts
+        run: bash scripts/packaging/build-linux.sh
+      - name: Upload Linux artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ophanimav-linux-installers
+          path: dist/linux/*
+          if-no-files-found: warn
+
+  macos:
+    name: macOS DMG (${{ matrix.runner }}-${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            arch: intel
+          - runner: macos-14
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build macOS artifact
+        run: bash scripts/packaging/build-macos.sh "${{ matrix.arch }}"
+      - name: Upload macOS artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ophanimav-macos-${{ matrix.arch }}-dmg
+          path: dist/macos/*${{ matrix.arch }}*.dmg
+          if-no-files-found: warn
