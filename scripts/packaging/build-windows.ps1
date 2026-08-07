@@ -9,7 +9,7 @@ $pyDistRoot = Join-Path $root "dist\OphanimAV"
 python -m pip install --upgrade pip
 python -m pip install pyinstaller
 
-dotnet tool install --global wix --version 5.*
+dotnet tool install --global wix --version 5.0.0
 $env:PATH = "$env:USERPROFILE\.dotnet\tools;$env:PATH"
 wix extension add WixToolset.UI.wixext
 
