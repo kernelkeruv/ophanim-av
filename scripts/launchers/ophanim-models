@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+find_repo(){
+    local p
+    for p in "${OPHANIM_AV_REPO:-}" "$HOME/dev/ophanim-av" /opt/ophanim-av; do
+        [[ -n "$p" && -f "$p/src/hf_auth.py" ]] || continue
+        printf '%s\n' "$p"
+        return 0
+    done
+    return 1
+}
+
+REPO="$(find_repo)" || { printf 'ERROR: OphanimAV repository not found.\n' >&2; exit 1; }
+PYTHON='python3'
+[[ -x "$HOME/dev/OphanimAV/.venv/bin/python" ]] && PYTHON="$HOME/dev/OphanimAV/.venv/bin/python"
+[[ -x "$REPO/.venv/bin/python" ]] && PYTHON="$REPO/.venv/bin/python"
+
+usage(){
+cat <<'HELP_EOF'
+OphanimAV model manager
+
+  ophanim-models status
+  ophanim-models login
+  ophanim-models logout
+  ophanim-models whoami
+  ophanim-models current
+  ophanim-models search QUERY
+  ophanim-models search-whisper
+  ophanim-models search-vision
+  ophanim-models search-diarization
+  ophanim-models cache
+HELP_EOF
+}
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+    status) exec "$PYTHON" "$REPO/src/hf_auth.py" status ;;
+    login) exec "$PYTHON" "$REPO/src/hf_auth.py" login ;;
+    logout) exec "$PYTHON" "$REPO/src/hf_auth.py" logout ;;
+    whoami) exec "$PYTHON" "$REPO/src/hf_auth.py" json ;;
+    current)
+        cat <<'CURRENT_EOF'
+Transcription: Systran/faster-whisper-large-v3
+Sentiment:     cardiffnlp/twitter-roberta-base-sentiment-latest
+Authentication: optional
+CURRENT_EOF
+        ;;
+    search)
+        (( $# > 0 )) || { printf 'Usage: ophanim-models search QUERY\n' >&2; exit 2; }
+        command -v hf >/dev/null 2>&1 || { printf 'ERROR: hf CLI unavailable.\n' >&2; exit 1; }
+        hf models list --search "$*"
+        ;;
+    search-whisper) exec "$0" search whisper ;;
+    search-vision) exec "$0" search vision ;;
+    search-diarization) exec "$0" search diarization ;;
+    cache)
+        command -v hf >/dev/null 2>&1 || { printf 'ERROR: hf CLI unavailable.\n' >&2; exit 1; }
+        hf cache ls 2>/dev/null || hf cache scan 2>/dev/null || true
+        ;;
+    help|-h|--help) usage ;;
+    *) printf 'Unknown command: %s\n\n' "$cmd" >&2; usage >&2; exit 2 ;;
+esac

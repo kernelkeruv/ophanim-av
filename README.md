@@ -49,3 +49,17 @@ Each platform uploads artifacts independently so one platform failure does not s
 ## AV performance telemetry
 
 Each indexed media item now writes `/performance-metrics.json` in its work directory with stage timing metrics (audio extraction, transcription, sentiment, scene/motion/object passes, and event persistence). Use these metrics as the baseline when tuning pipeline throughput.
+
+## Optional Hugging Face integration
+
+OphanimAV remains fully functional without a Hugging Face account. Authentication is optional and is delegated to `huggingface_hub`; OphanimAV does not maintain its own token file.
+
+```bash
+ophanim-models status
+ophanim-models login
+ophanim-models logout
+ophanim-models current
+ophanim-models search whisper
+```
+
+Local-first privacy remains the default. This integration does not upload source media, transcripts, frames, SQLite catalogs, thumbnails, embeddings, or derived analysis data.

@@ -1,0 +1,25 @@
+[ophanimav]
+local_first = true
+allow_media_upload = false
+
+[huggingface]
+enabled = false
+authentication_optional = true
+
+[models.transcription]
+repo = "Systran/faster-whisper-large-v3"
+device = "auto"
+compute_type = "auto"
+
+[models.sentiment]
+repo = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+
+[models.diarization]
+enabled = false
+
+[privacy]
+media_upload = false
+transcript_upload = false
+frame_upload = false
+database_upload = false
+telemetry = false

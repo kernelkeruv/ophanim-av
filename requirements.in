@@ -11,3 +11,5 @@ pyannote.audio
 rich
 tqdm
 pyyaml
+
+huggingface_hub>=0.34
