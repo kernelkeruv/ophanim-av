@@ -957,7 +957,7 @@ def process_media(
         finally:
             performance["stages"][name] = elapsed_seconds(started)
 
-    if not args.skip_transcription or (args.diarize and hf_token):
+    if not args.skip_transcription:
         stage("extract_audio", extract_audio, source, wav_path)
 
     if not args.skip_transcription:
