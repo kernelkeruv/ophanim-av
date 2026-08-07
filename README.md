@@ -63,3 +63,14 @@ ophanim-models search whisper
 ```
 
 Local-first privacy remains the default. This integration does not upload source media, transcripts, frames, SQLite catalogs, thumbnails, embeddings, or derived analysis data.
+
+
+## Hardware-aware YOLO26 vision
+
+OphanimAV defaults to `YOLO_MODEL=auto`. `ophanim-yolo select` inspects CUDA VRAM, Apple MPS, system RAM and CPU capacity; it then smoke-tests the largest suitable YOLO26 model and falls back automatically.
+
+```bash
+ophanim-yolo profile
+ophanim-yolo select --force --policy accuracy
+ophanim-yolo status
+```

@@ -23,3 +23,9 @@ transcript_upload = false
 frame_upload = false
 database_upload = false
 telemetry = false
+
+[models.vision]
+family = "YOLO26"
+repo = "auto"
+policy = "accuracy"
+imgsz = 640

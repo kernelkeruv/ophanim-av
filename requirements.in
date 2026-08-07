@@ -1,5 +1,5 @@
 faster-whisper
-ultralytics
+ultralytics>=8.4.52,<9
 opencv-python
 scenedetect
 transformers
