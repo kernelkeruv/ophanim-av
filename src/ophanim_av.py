@@ -544,6 +544,17 @@ def detect_objects(
     """Track objects and create a review proxy with synchronized boxes and motion state."""
     import cv2
     from ultralytics import YOLO
+    from yolo_auto import resolve
+
+    force_cpu = model_name.startswith("cpu::")
+    if force_cpu:
+        model_name = model_name[5:]
+    yolo_runtime = resolve(model_name, force_device="cpu" if force_cpu else None)
+    selected = yolo_runtime["selected"]
+    model_name = selected["model_path"]
+    yolo_device = selected["device"]
+    logging.info("YOLO runtime: model=%s device=%s policy=%s latency=%s ms", selected["model"], yolo_device, yolo_runtime["policy"], selected.get("latency_ms_640"))
+    json_dump(work_dir / "yolo-runtime.json", yolo_runtime)
 
     model = YOLO(model_name)
     stride = max(1, stride)
@@ -562,10 +573,11 @@ def detect_objects(
         stream=True,
         persist=True,
         tracker="botsort.yaml",
-        device=0 if device == "cuda" else "cpu",
+        device=yolo_device,
         vid_stride=stride,
         imgsz=int(os.environ.get("YOLO_IMGSZ", "640")),
-        half=(device == "cuda" and os.environ.get("YOLO_HALF", "1") == "1"),
+        quantize=(16 if yolo_device not in {"cpu", "mps"} and os.environ.get("YOLO_FP16", "1") == "1" else None),
+        channels_last=(yolo_device not in {"cpu", "mps"} and os.environ.get("YOLO_CHANNELS_LAST", "1") == "1"),
         batch=1,
         conf=0.25,
         iou=0.5,
@@ -1042,7 +1054,7 @@ def process_media(
                         objects = stage(
                             "detect_objects_cpu_fallback",
                             detect_objects,
-                            source, work_dir, args.object_model, "cpu",
+                            source, work_dir, f"cpu::{args.object_model}", "cpu",
                             source_fps, args.object_stride,
                         )
                         all_events.extend(objects)
@@ -1072,7 +1084,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source", type=Path, default=Path(os.environ.get("OPHANIM_AV_SOURCE", ".")))
     parser.add_argument("--derived", type=Path, default=Path(os.environ.get("OPHANIM_AV_DERIVED", "./derived")))
     parser.add_argument("--whisper-model", default=os.environ.get("WHISPER_MODEL", "large-v3"))
-    parser.add_argument("--object-model", default=os.environ.get("YOLO_MODEL", "yolo11s.pt"))
+    parser.add_argument("--object-model", default=os.environ.get("YOLO_MODEL", "auto"))
     parser.add_argument("--object-stride", type=int, default=int(os.environ.get("YOLO_STRIDE", "3")))
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--limit", type=int)
@@ -1107,10 +1119,20 @@ def main() -> int:
     conn = init_db(db_path)
     json_dump(derived / "system-manifest.json", system_manifest())
 
-    token_path = Path(os.environ.get("HF_TOKEN_FILE", "~/.config/ophanim-av/hf_token")).expanduser()
-    hf_token = token_path.read_text(encoding="utf-8").strip() if token_path.is_file() else None
-    if args.diarize and not hf_token:
-        logging.warning("Diarization enabled but no token exists at %s; skipping diarization", token_path)
+    hf_token = None
+    if args.diarize:
+        try:
+            from huggingface_hub import get_token
+
+            hf_token = get_token()
+        except ImportError:
+            logging.warning(
+                "Diarization enabled but huggingface_hub is unavailable; skipping diarization"
+            )
+        if not hf_token:
+            logging.warning(
+                "Diarization enabled but huggingface_hub found no credential; skipping diarization"
+            )
 
     device, compute_type = gpu_device()
     logging.info("Compute device: %s; Whisper compute type: %s", device, compute_type)

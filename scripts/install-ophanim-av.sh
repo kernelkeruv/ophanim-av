@@ -1391,3 +1391,10 @@ Then change ENABLE_DIARIZATION="0" to "1" in:
 Review progress now with:
   ophanim-log
 EOF_DONE
+
+# OPHANIMAV_HF_MODEL_MANAGER_INSTALL
+if [[ -f "$ROOT/scripts/launchers/ophanim-models" ]]; then
+    install -Dm0755 \
+        "$ROOT/scripts/launchers/ophanim-models" \
+        "$HOME/.local/bin/ophanim-models"
+fi

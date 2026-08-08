@@ -1,5 +1,5 @@
 faster-whisper
-ultralytics
+ultralytics>=8.4.52,<9
 opencv-python
 scenedetect
 transformers
@@ -11,3 +11,5 @@ pyannote.audio
 rich
 tqdm
 pyyaml
+
+huggingface_hub>=0.34
