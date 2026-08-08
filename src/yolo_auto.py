@@ -44,7 +44,8 @@ def profile() -> dict[str, Any]:
     import torch
     p={"platform":platform.platform(),"machine":platform.machine(),"cpu_threads":os.cpu_count() or 1,
        "ram_bytes":ram_bytes(),"torch":getattr(torch,"__version__","unknown"),"backend":"cpu",
-       "device":"cpu","gpu_name":None,"vram_total":0,"vram_free":0,"compute_capability":None}
+       "device":"cpu","gpu_name":None,"vram_total":0,"vram_free":0,"compute_capability":None,
+       "vram_reserve_gib":float(os.environ.get("OPHANIM_YOLO_VRAM_RESERVE_GIB","2.5"))}
     if torch.cuda.is_available():
         i=torch.cuda.current_device(); props=torch.cuda.get_device_properties(i); free,total=torch.cuda.mem_get_info(i)
         p.update(backend="cuda",device=str(i),gpu_name=props.name,vram_total=int(total),vram_free=int(free),
@@ -54,11 +55,13 @@ def profile() -> dict[str, Any]:
     return p
 
 def signature(p: dict[str, Any]) -> str:
-    keys=("platform","machine","cpu_threads","ram_bytes","torch","backend","gpu_name","vram_total","compute_capability")
+    keys=("platform","machine","cpu_threads","ram_bytes","torch","backend","gpu_name","vram_total","compute_capability","vram_reserve_gib")
     return hashlib.sha256(json.dumps({k:p[k] for k in keys},sort_keys=True).encode()).hexdigest()
 
 def candidates(p: dict[str, Any], policy: str) -> list[str]:
-    v=p["vram_total"]/(1024**3); r=p["ram_bytes"]/(1024**3); t=int(p["cpu_threads"])
+    reserve=max(0.0,float(p.get("vram_reserve_gib",2.5)))
+    v=max(0.0,min(p["vram_total"],p["vram_free"])/(1024**3)-reserve)
+    r=p["ram_bytes"]/(1024**3); t=int(p["cpu_threads"])
     if policy=="speed": return ["yolo26n.pt","yolo26s.pt"]
     if p["backend"]=="cuda":
         if v>=10: out=["yolo26x.pt","yolo26l.pt","yolo26m.pt","yolo26s.pt","yolo26n.pt"]
@@ -98,7 +101,7 @@ def probe(name: str, p: dict[str, Any], force_device: str|None=None) -> dict[str
         os.chdir(old); release()
 
 def select(*,force=False,policy=None,force_device=None) -> dict[str, Any]:
-    policy=(policy or os.environ.get("OPHANIM_YOLO_POLICY","accuracy")).lower()
+    policy=(policy or os.environ.get("OPHANIM_YOLO_POLICY","balanced")).lower()
     if policy not in {"accuracy","balanced","speed"}: raise ValueError(policy)
     p=profile(); sig=signature(p)
     if not force and force_device is None and SELECTION.is_file():
@@ -134,13 +137,14 @@ def show(out:dict[str,Any])->None:
     print("===============================")
     print("Backend:       ",p["backend"]); print("GPU:           ",p["gpu_name"] or "none")
     print("VRAM:          ",gib(p["vram_total"])); print("System RAM:    ",gib(p["ram_bytes"])); print("CPU threads:   ",p["cpu_threads"])
+    print("VRAM reserve:  ",f"{p.get('vram_reserve_gib',0):.2f} GiB")
     print("Policy:        ",out["policy"]); print("Selected model:",s["model"]); print("Device:        ",s["device"])
     print("640 latency:   ",s["latency_ms_640"],"ms"); print("Peak VRAM:     ",gib(s["peak_vram_bytes"] or 0)); print("COCO mAP:      ",s["coco_map_50_95"])
 
 def main()->int:
     ap=argparse.ArgumentParser(); sp=ap.add_subparsers(dest="cmd",required=True)
     sp.add_parser("profile"); sp.add_parser("status")
-    s=sp.add_parser("select"); s.add_argument("--force",action="store_true"); s.add_argument("--policy",choices=("accuracy","balanced","speed"),default="accuracy")
+    s=sp.add_parser("select"); s.add_argument("--force",action="store_true"); s.add_argument("--policy",choices=("accuracy","balanced","speed"),default=None)
     a=ap.parse_args()
     if a.cmd=="profile":
         p=profile(); show({"profile":p,"selected":{"model":"not selected","device":p["device"],"latency_ms_640":None,"peak_vram_bytes":0,"coco_map_50_95":None},"policy":"n/a"}); return 0

@@ -1119,10 +1119,20 @@ def main() -> int:
     conn = init_db(db_path)
     json_dump(derived / "system-manifest.json", system_manifest())
 
-    token_path = Path(os.environ.get("HF_TOKEN_FILE", "~/.config/ophanim-av/hf_token")).expanduser()
-    hf_token = token_path.read_text(encoding="utf-8").strip() if token_path.is_file() else None
-    if args.diarize and not hf_token:
-        logging.warning("Diarization enabled but no token exists at %s; skipping diarization", token_path)
+    hf_token = None
+    if args.diarize:
+        try:
+            from huggingface_hub import get_token
+
+            hf_token = get_token()
+        except ImportError:
+            logging.warning(
+                "Diarization enabled but huggingface_hub is unavailable; skipping diarization"
+            )
+        if not hf_token:
+            logging.warning(
+                "Diarization enabled but huggingface_hub found no credential; skipping diarization"
+            )
 
     device, compute_type = gpu_device()
     logging.info("Compute device: %s; Whisper compute type: %s", device, compute_type)

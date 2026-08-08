@@ -24,9 +24,9 @@ OphanimAV model manager
   ophanim-models status
   ophanim-models login
   ophanim-models logout
-  ophanim-models whoami
+  ophanim-models whoami             # explicit network identity check
   ophanim-models current
-  ophanim-models search QUERY
+  ophanim-models search QUERY       # explicit remote Hub search
   ophanim-models search-whisper
   ophanim-models search-vision
   ophanim-models search-diarization
@@ -39,7 +39,7 @@ case "$cmd" in
     status) exec "$PYTHON" "$REPO/src/hf_auth.py" status ;;
     login) exec "$PYTHON" "$REPO/src/hf_auth.py" login ;;
     logout) exec "$PYTHON" "$REPO/src/hf_auth.py" logout ;;
-    whoami) exec "$PYTHON" "$REPO/src/hf_auth.py" json ;;
+    whoami) exec "$PYTHON" "$REPO/src/hf_auth.py" whoami ;;
     current)
         cat <<'CURRENT_EOF'
 Transcription: Systran/faster-whisper-large-v3
@@ -50,7 +50,10 @@ CURRENT_EOF
     search)
         (( $# > 0 )) || { printf 'Usage: ophanim-models search QUERY\n' >&2; exit 2; }
         command -v hf >/dev/null 2>&1 || { printf 'ERROR: hf CLI unavailable.\n' >&2; exit 1; }
-        hf models list --search "$*"
+        printf 'Querying the Hugging Face Hub; no local media or analysis files are sent.\n' >&2
+        printf -v query '%s ' "$@"
+        query="${query% }"
+        hf models list --search "$query"
         ;;
     search-whisper) exec "$0" search whisper ;;
     search-vision) exec "$0" search vision ;;

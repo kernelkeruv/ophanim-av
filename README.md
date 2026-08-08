@@ -52,25 +52,34 @@ Each indexed media item now writes `/performance-metrics.json` in its work direc
 
 ## Optional Hugging Face integration
 
-OphanimAV remains fully functional without a Hugging Face account. Authentication is optional and is delegated to `huggingface_hub`; OphanimAV does not maintain its own token file.
+OphanimAV remains fully functional without a Hugging Face account. Authentication is optional and is delegated to `huggingface_hub`; OphanimAV does not maintain its own token file. `ophanim-models status` performs a local credential-presence check only. `whoami` and `search` are the explicit network operations.
 
 ```bash
 ophanim-models status
 ophanim-models login
 ophanim-models logout
+ophanim-models whoami
 ophanim-models current
 ophanim-models search whisper
 ```
 
-Local-first privacy remains the default. This integration does not upload source media, transcripts, frames, SQLite catalogs, thumbnails, embeddings, or derived analysis data.
+Local-first privacy remains the default. This integration contains no media or analysis upload call and does not upload source media, transcripts, frames, SQLite catalogs, thumbnails, embeddings, or derived analysis data. Model downloads and an explicitly requested Hub search still use the network.
 
 
 ## Hardware-aware YOLO26 vision
 
-OphanimAV defaults to `YOLO_MODEL=auto`. `ophanim-yolo select` inspects CUDA VRAM, Apple MPS, system RAM and CPU capacity; it then smoke-tests the largest suitable YOLO26 model and falls back automatically.
+OphanimAV defaults to `YOLO_MODEL=auto`. `ophanim-yolo select` inspects currently free CUDA VRAM, Apple MPS, system RAM and CPU capacity; it reserves 2.5 GiB of CUDA VRAM for desktop playback and other work, then smoke-tests a suitable YOLO26 model and falls back automatically.
 
 ```bash
 ophanim-yolo profile
 ophanim-yolo select --force --policy accuracy
 ophanim-yolo status
 ```
+
+## Review UI and generated files
+
+The player groups indexed content into Transcript, Events and Files tabs. Status filtering separates FAILED, PROCESSING, QUEUED and COMPLETE items; event queries are capped per view to keep long recordings responsive. The Files tab shows the exact local paths for SRT/VTT captions, transcript exports, YOLO object events, motion intervals, manifests and performance metrics.
+
+`Open in VLC` launches the current source or finished AI preview with `transcript.srt` attached when available. Background indexing can finish while the player remains open. Finished previews are not swapped into active playback unless the user clicks `Load finished AI preview` or enables `Switch when preview finishes`.
+
+For local throughput, start with `YOLO_STRIDE=10`, leave word-level transcript links off for very long recordings, and use the generated `performance-metrics.json` to identify whether Whisper, motion analysis or YOLO is the actual bottleneck before changing model size or image resolution.

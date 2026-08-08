@@ -27,5 +27,5 @@ telemetry = false
 [models.vision]
 family = "YOLO26"
 repo = "auto"
-policy = "accuracy"
+policy = "balanced"
 imgsz = 640
