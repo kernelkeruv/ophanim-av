@@ -80,7 +80,7 @@ opentelemetry-semantic-conventions==0.65b0
 optuna==4.9.0
 packaging==26.3
 pandas==3.0.5
-pillow==12.2.0
+pillow==12.3.0
 platformdirs==4.11.0
 polars==1.43.2
 polars-runtime-32==1.43.2
@@ -112,7 +112,7 @@ scenedetect==0.7.1
 scikit-learn==1.9.0
 scipy==1.18.0
 sentencepiece==0.2.2
-setuptools==78.1.0
+setuptools==83.0.0
 shellingham==1.5.4
 shiboken6==6.11.1
 six==1.17.0
@@ -121,7 +121,7 @@ SQLAlchemy==2.0.51
 sympy==1.14.0
 threadpoolctl==3.6.0
 tokenizers==0.22.2
-torch==2.11.0+cu128
+torch==2.13.0
 torch-audiomentations==0.12.0
 torch_pitch_shift==1.2.5
 torchaudio==2.11.0+cu128
