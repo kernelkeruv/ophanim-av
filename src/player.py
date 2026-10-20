@@ -11,6 +11,7 @@ import subprocess
 import sys
 from bisect import bisect_right
 from pathlib import Path
+from shutil import which
 
 import vlc
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QSplitter,
+    QTabWidget,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -49,6 +51,22 @@ STATUS_STYLES = {
     "new": ("#546e7a", "#ffffff"),
     "failed": ("#b71c1c", "#ffffff"),
 }
+
+STATUS_ORDER = ("failed", "processing", "queued", "complete", "new")
+MAX_EVENTS_PER_VIEW = max(100, int(os.environ.get("OPHANIM_AV_UI_EVENT_LIMIT", "1500")))
+OUTPUT_FILES = (
+    ("SRT captions", "transcript.srt"),
+    ("WebVTT captions", "transcript.vtt"),
+    ("Plain transcript", "transcript.txt"),
+    ("Transcript JSON", "transcript.json"),
+    ("Object and motion preview", "annotated-preview.mp4"),
+    ("Object events", "object-events.json"),
+    ("Motion intervals", "motion-intervals.json"),
+    ("Scene analysis", "scenes.json"),
+    ("Review intervals", "review-intervals.json"),
+    ("Performance metrics", "performance-metrics.json"),
+    ("Processing manifest", "manifest.json"),
+)
 
 
 def sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
@@ -219,6 +237,8 @@ class ImportWorker(QThread):
 START_ROLE = Qt.ItemDataRole.UserRole
 MEDIA_ROLE = Qt.ItemDataRole.UserRole + 1
 KIND_ROLE = Qt.ItemDataRole.UserRole + 2
+STATUS_ROLE = Qt.ItemDataRole.UserRole + 3
+OUTPUT_PATH_ROLE = Qt.ItemDataRole.UserRole + 4
 
 
 def format_time(seconds: float, milliseconds: bool = False) -> str:
@@ -247,6 +267,8 @@ class OphanimAVPlayer(QMainWindow):
         self.import_worker: ImportWorker | None = None
         self.conn = sqlite3.connect(db_path, timeout=30)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA busy_timeout=3000")
+        self.conn.execute("PRAGMA query_only=ON")
         self.current_media_id: int | None = None
         self.current_path: Path | None = None
         self.current_work_dir: Path | None = None
@@ -259,6 +281,7 @@ class OphanimAVPlayer(QMainWindow):
         self.last_catalog_signature: tuple | None = None
         self.seeking = False
         self.opened_playback_path: Path | None = None
+        self.catalog_counts: dict[str, int] = {}
 
         self.vlc_instance = vlc.Instance(
             "--no-video-title-show",
@@ -280,9 +303,14 @@ class OphanimAVPlayer(QMainWindow):
         self.timer.start()
 
         self.refresh_timer = QTimer(self)
-        self.refresh_timer.setInterval(3000)
+        self.refresh_timer.setInterval(5000)
         self.refresh_timer.timeout.connect(self._refresh_catalog)
         self.refresh_timer.start()
+
+        self.event_search_timer = QTimer(self)
+        self.event_search_timer.setSingleShot(True)
+        self.event_search_timer.setInterval(250)
+        self.event_search_timer.timeout.connect(self._reload_events)
 
     def _build_ui(self) -> None:
         menu = self.menuBar().addMenu("File")
@@ -325,21 +353,33 @@ class OphanimAVPlayer(QMainWindow):
         self.intake_status.setWordWrap(True)
         left_layout.addWidget(self.intake_status)
         self.catalog_label = QLabel("Catalog loading")
+        self.catalog_label.setWordWrap(True)
         left_layout.addWidget(self.catalog_label)
+        filter_row = QHBoxLayout()
+        self.status_filter = QComboBox()
+        self.status_filter.addItems(["all", "failed", "processing", "queued", "complete", "new"])
+        self.status_filter.setToolTip("Show one processing state")
+        self.status_filter.currentTextChanged.connect(self._filter_media)
+        filter_row.addWidget(self.status_filter)
         self.media_search = QLineEdit()
-        self.media_search.setPlaceholderText("Filter by filename, folder, or status")
+        self.media_search.setPlaceholderText("Filter filename or folder")
         self.media_search.setClearButtonEnabled(True)
         self.media_search.textChanged.connect(self._filter_media)
-        left_layout.addWidget(self.media_search)
+        filter_row.addWidget(self.media_search, 1)
+        left_layout.addLayout(filter_row)
         self.media_list = QListWidget()
         self.media_list.setAlternatingRowColors(True)
         self.media_list.itemDoubleClicked.connect(self._open_media_item)
+        self.media_list.itemActivated.connect(self._open_media_item)
         left_layout.addWidget(self.media_list)
         splitter.addWidget(left)
 
         center = QWidget()
         center_layout = QVBoxLayout(center)
-        self.playback_label = QLabel("Open a completed item. Processing items update automatically.")
+        self.playback_label = QLabel(
+            "Open an item to review it while local transcription and vision analysis continue."
+        )
+        self.playback_label.setWordWrap(True)
         center_layout.addWidget(self.playback_label)
         action_row = QHBoxLayout()
         self.open_source_button = QPushButton("Open source folder")
@@ -348,8 +388,20 @@ class OphanimAVPlayer(QMainWindow):
         self.open_analysis_button = QPushButton("Open analysis folder")
         self.open_analysis_button.clicked.connect(self._open_analysis_directory)
         action_row.addWidget(self.open_analysis_button)
+        self.external_vlc_button = QPushButton("Open in VLC")
+        self.external_vlc_button.setToolTip("Open the current media with its generated SRT captions")
+        self.external_vlc_button.clicked.connect(self._open_external_vlc)
+        action_row.addWidget(self.external_vlc_button)
+        self.load_preview_button = QPushButton("Load finished AI preview")
+        self.load_preview_button.setEnabled(False)
+        self.load_preview_button.clicked.connect(self._load_finished_preview)
+        action_row.addWidget(self.load_preview_button)
         action_row.addStretch(1)
         center_layout.addLayout(action_row)
+        self.caption_label = QLabel("Captions: select an indexed item")
+        self.caption_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.caption_label.setWordWrap(True)
+        center_layout.addWidget(self.caption_label)
         self.video_frame = QFrame()
         self.video_frame.setFrameShape(QFrame.Shape.Box)
         self.video_frame.setStyleSheet("background: black;")
@@ -385,6 +437,12 @@ class OphanimAVPlayer(QMainWindow):
         self.use_preview.setToolTip("Toggle between source media and annotated AI preview")
         self.use_preview.toggled.connect(self._reload_current_at_same_time)
         controls.addWidget(self.use_preview)
+        self.auto_load_preview = QCheckBox("Switch when preview finishes")
+        self.auto_load_preview.setChecked(False)
+        self.auto_load_preview.setToolTip(
+            "Off by default so background processing never interrupts current playback"
+        )
+        controls.addWidget(self.auto_load_preview)
         self.auto_skip = QCheckBox("Auto-skip inactive")
         self.auto_skip.setToolTip("Skip directly to the next review interval")
         controls.addWidget(self.auto_skip)
@@ -393,33 +451,69 @@ class OphanimAVPlayer(QMainWindow):
 
         right = QWidget()
         right_layout = QVBoxLayout(right)
-        right_layout.addWidget(QLabel("Transcript search"))
+        self.analysis_tabs = QTabWidget()
+        right_layout.addWidget(self.analysis_tabs)
+
+        transcript_tab = QWidget()
+        transcript_layout = QVBoxLayout(transcript_tab)
         search_row = QHBoxLayout()
         self.transcript_search = QLineEdit()
-        self.transcript_search.setPlaceholderText("Search transcript")
+        self.transcript_search.setPlaceholderText("Search indexed transcript")
         self.transcript_search.setClearButtonEnabled(True)
         self.transcript_search.returnPressed.connect(self._find_transcript)
         search_row.addWidget(self.transcript_search)
         self.find_button = QPushButton("Find")
         self.find_button.clicked.connect(self._find_transcript)
         search_row.addWidget(self.find_button)
-        right_layout.addLayout(search_row)
-        right_layout.addWidget(QLabel("Timed transcript; click any word to seek"))
+        transcript_layout.addLayout(search_row)
+        self.word_seek = QCheckBox("Word-level links; slower on very long transcripts")
+        self.word_seek.setChecked(False)
+        self.word_seek.toggled.connect(self._reload_transcript)
+        transcript_layout.addWidget(self.word_seek)
         self.transcript_view = QTextBrowser()
         self.transcript_view.setOpenLinks(False)
         self.transcript_view.anchorClicked.connect(self._seek_from_anchor)
-        right_layout.addWidget(self.transcript_view, 2)
+        transcript_layout.addWidget(self.transcript_view)
+        self.analysis_tabs.addTab(transcript_tab, "Transcript")
 
+        event_tab = QWidget()
+        event_layout = QVBoxLayout(event_tab)
         event_header = QHBoxLayout()
-        event_header.addWidget(QLabel("Analysis events"))
         self.event_filter = QComboBox()
         self.event_filter.addItems(["all", "object", "motion", "speech", "scene"])
         self.event_filter.currentTextChanged.connect(self._apply_event_filter)
         event_header.addWidget(self.event_filter)
-        right_layout.addLayout(event_header)
+        self.event_search = QLineEdit()
+        self.event_search.setPlaceholderText("Filter labels, tracks, or metadata")
+        self.event_search.setClearButtonEnabled(True)
+        self.event_search.textChanged.connect(self._queue_event_refresh)
+        event_header.addWidget(self.event_search, 1)
+        event_layout.addLayout(event_header)
+        self.event_summary_label = QLabel("Select media to load analysis events")
+        self.event_summary_label.setWordWrap(True)
+        event_layout.addWidget(self.event_summary_label)
         self.event_list = QListWidget()
         self.event_list.itemClicked.connect(self._seek_from_item)
-        right_layout.addWidget(self.event_list, 1)
+        self.event_list.itemActivated.connect(self._seek_from_item)
+        event_layout.addWidget(self.event_list)
+        self.analysis_tabs.addTab(event_tab, "Events")
+
+        output_tab = QWidget()
+        output_layout = QVBoxLayout(output_tab)
+        output_layout.addWidget(QLabel("Generated local files; double-click to open"))
+        self.output_list = QListWidget()
+        self.output_list.itemDoubleClicked.connect(self._open_output_item)
+        self.output_list.itemActivated.connect(self._open_output_item)
+        output_layout.addWidget(self.output_list)
+        output_actions = QHBoxLayout()
+        self.copy_caption_button = QPushButton("Copy SRT path")
+        self.copy_caption_button.clicked.connect(self._copy_caption_path)
+        output_actions.addWidget(self.copy_caption_button)
+        self.open_caption_dir_button = QPushButton("Open caption folder")
+        self.open_caption_dir_button.clicked.connect(self._open_caption_directory)
+        output_actions.addWidget(self.open_caption_dir_button)
+        output_layout.addLayout(output_actions)
+        self.analysis_tabs.addTab(output_tab, "Files")
         splitter.addWidget(right)
 
         splitter.setSizes([320, 980, 520])
@@ -483,7 +577,6 @@ class OphanimAVPlayer(QMainWindow):
             self.player.set_nsobject(window_id)
 
     def _catalog_signature(self) -> tuple:
-        self.conn.commit()
         rows = self.conn.execute(
             "SELECT status, COUNT(*), MAX(indexed_at) FROM media GROUP BY status ORDER BY status"
         ).fetchall()
@@ -500,9 +593,16 @@ class OphanimAVPlayer(QMainWindow):
             return
         self.last_catalog_signature = signature
         current_id = self.current_media_id
+        self.media_list.setUpdatesEnabled(False)
         self.media_list.clear()
         rows = self.conn.execute(
-            "SELECT id, source_path, status, duration, error, work_dir FROM media ORDER BY source_path"
+            """
+            SELECT id, source_path, status, duration, error, work_dir
+            FROM media
+            ORDER BY CASE status
+                WHEN 'failed' THEN 0 WHEN 'processing' THEN 1 WHEN 'new' THEN 2
+                WHEN 'complete' THEN 3 ELSE 4 END, source_path
+            """
         ).fetchall()
         counts: dict[str, int] = {}
         selected_item = None
@@ -524,6 +624,7 @@ class OphanimAVPlayer(QMainWindow):
             duration = format_time(float(row["duration"] or 0.0))
             item = QListWidgetItem(f"[{status}] {path.name} {duration} {path.parent}")
             item.setData(MEDIA_ROLE, int(row["id"]))
+            item.setData(STATUS_ROLE, status)
             item.setToolTip(str(row["error"] or path))
             widget = MediaRowWidget(status, path.name, str(path.parent), duration)
             item.setSizeHint(widget.sizeHint())
@@ -546,26 +647,39 @@ class OphanimAVPlayer(QMainWindow):
             counts["queued"] = counts.get("queued", 0) + 1
             item = QListWidgetItem(f"[queued] {path.name} {path.parent}")
             item.setData(MEDIA_ROLE, None)
+            item.setData(STATUS_ROLE, "queued")
             item.setToolTip(f"Queued for indexing\n{path}")
             widget = MediaRowWidget("queued", path.name, str(path.parent), "waiting")
             item.setSizeHint(widget.sizeHint())
             self.media_list.addItem(item)
             self.media_list.setItemWidget(item, widget)
 
-        self.catalog_label.setText(
-            "  ".join(f"{key}: {value}" for key, value in sorted(counts.items()))
-            or "No indexed media"
-        )
+        self.catalog_counts = counts
+        summary = []
+        for status in STATUS_ORDER:
+            count = counts.get(status, 0)
+            background, foreground = STATUS_STYLES.get(status, ("#455a64", "#ffffff"))
+            summary.append(
+                f"<span style='background:{background};color:{foreground};padding:2px 6px'>"
+                f"{status.upper()} {count}</span>"
+            )
+        self.catalog_label.setText(" &nbsp; ".join(summary) if counts else "No indexed media")
+        self.catalog_label.setTextFormat(Qt.TextFormat.RichText)
         if selected_item is not None:
             self.media_list.setCurrentItem(selected_item)
             self._refresh_current_media_if_ready()
-        self._filter_media(self.media_search.text())
+        self.media_list.setUpdatesEnabled(True)
+        self._filter_media()
 
-    def _filter_media(self, text: str) -> None:
-        query = text.casefold().strip()
+    def _filter_media(self, _value: str = "") -> None:
+        query = self.media_search.text().casefold().strip()
+        selected_status = self.status_filter.currentText()
         for index in range(self.media_list.count()):
             item = self.media_list.item(index)
-            item.setHidden(query not in item.text().casefold())
+            status = str(item.data(STATUS_ROLE) or "")
+            visible = (selected_status == "all" or status == selected_status)
+            visible = visible and query in item.text().casefold()
+            item.setHidden(not visible)
 
     def _add_files(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
@@ -693,7 +807,6 @@ class OphanimAVPlayer(QMainWindow):
         self._open_media_id(int(media_id), preserve_ms=None)
 
     def _open_media_id(self, media_id: int, preserve_ms: int | None) -> None:
-        self.conn.commit()
         row = self.conn.execute("SELECT * FROM media WHERE id=?", (media_id,)).fetchone()
         if not row:
             return
@@ -716,6 +829,10 @@ class OphanimAVPlayer(QMainWindow):
         subtitle = work_dir / "transcript.srt"
         if subtitle.is_file():
             media.add_option(f":sub-file={subtitle}")
+            self.caption_label.setText(f"Captions: {subtitle}")
+        else:
+            self.caption_label.setText(f"Captions pending: {subtitle}")
+        self.load_preview_button.setEnabled(annotated.is_file() and playback_path != annotated)
         self.player.set_media(media)
         self._attach_video_output()
         self.player.play()
@@ -736,6 +853,7 @@ class OphanimAVPlayer(QMainWindow):
 
         self._load_transcript(media_id, work_dir)
         self._load_events(media_id, row)
+        self._load_outputs(work_dir)
         review_path = work_dir / "review-intervals.json"
         try:
             self.review_intervals = (
@@ -751,6 +869,16 @@ class OphanimAVPlayer(QMainWindow):
             return
         self._open_media_id(self.current_media_id, preserve_ms=max(0, self.player.get_time()))
 
+    def _load_finished_preview(self) -> None:
+        if self.current_media_id is None or self.current_work_dir is None:
+            return
+        preview = self.current_work_dir / "annotated-preview.mp4"
+        if not preview.is_file():
+            return
+        self.use_preview.setChecked(True)
+        if self.opened_playback_path != preview:
+            self._reload_current_at_same_time()
+
     def _refresh_current_media_if_ready(self) -> None:
         if self.current_media_id is None:
             return
@@ -761,12 +889,28 @@ class OphanimAVPlayer(QMainWindow):
             return
         work_dir = Path(row["work_dir"])
         preview = work_dir / "annotated-preview.mp4"
-        needs_reload = False
-        if str(row["status"]) != self.current_status:
-            needs_reload = True
-        if self.use_preview.isChecked() and preview.is_file() and self.opened_playback_path != preview:
-            needs_reload = True
-        if needs_reload:
+        status_changed = str(row["status"]) != self.current_status
+        preview_ready = preview.is_file() and self.opened_playback_path != preview
+        if status_changed:
+            self.current_status = str(row["status"])
+            self.current_error = str(row["error"] or "")
+            media_row = self.conn.execute(
+                "SELECT * FROM media WHERE id=?", (self.current_media_id,)
+            ).fetchone()
+            if media_row:
+                self._load_transcript(self.current_media_id, work_dir)
+                self._load_events(self.current_media_id, media_row)
+                self._load_outputs(work_dir)
+            self.playback_label.setText(
+                f"Background indexing status: {self.current_status.upper()}. "
+                "Current playback was left uninterrupted."
+            )
+        self.load_preview_button.setEnabled(preview_ready)
+        if (
+            preview_ready
+            and self.use_preview.isChecked()
+            and self.auto_load_preview.isChecked()
+        ):
             self._open_media_id(self.current_media_id, preserve_ms=max(0, self.player.get_time()))
 
     def _load_transcript(self, media_id: int, work_dir: Path) -> None:
@@ -776,7 +920,7 @@ class OphanimAVPlayer(QMainWindow):
         self.active_word_index = -1
 
         words: list[sqlite3.Row | dict] = []
-        if sql_table_exists(self.conn, "transcript_words"):
+        if self.word_seek.isChecked() and sql_table_exists(self.conn, "transcript_words"):
             words = self.conn.execute(
                 """
                 SELECT segment_start, start, end, word, probability
@@ -785,7 +929,7 @@ class OphanimAVPlayer(QMainWindow):
                 (media_id,),
             ).fetchall()
 
-        if not words:
+        if self.word_seek.isChecked() and not words:
             transcript_json = work_dir / "transcript.json"
             if transcript_json.is_file():
                 try:
@@ -855,7 +999,7 @@ class OphanimAVPlayer(QMainWindow):
             )
             if meta:
                 blocks.append(f'<span class="meta">{meta}</span><br>')
-            if segment_words:
+            if segment_words and self.word_seek.isChecked():
                 for word in segment_words:
                     token = str(word["word"]).strip()
                     if not token:
@@ -876,15 +1020,35 @@ class OphanimAVPlayer(QMainWindow):
             blocks.append("</div>")
         self.transcript_view.setHtml("".join(blocks))
 
+    def _reload_transcript(self, _checked: bool = False) -> None:
+        if self.current_media_id is not None and self.current_work_dir is not None:
+            self._load_transcript(self.current_media_id, self.current_work_dir)
+
     def _load_events(self, media_id: int, media_row: sqlite3.Row) -> None:
         self.event_list.clear()
+        kind = self.event_filter.currentText()
+        query = self.event_search.text().casefold().strip()
+        clauses = ["media_id=?"]
+        params: list[object] = [media_id]
+        if kind != "all":
+            clauses.append("kind=?")
+            params.append(kind)
+        if query:
+            clauses.append("lower(kind || ' ' || label || ' ' || coalesce(metadata_json, '')) LIKE ?")
+            params.append(f"%{query}%")
+        where = " AND ".join(clauses)
+        total = int(self.conn.execute(
+            f"SELECT COUNT(*) FROM events WHERE {where}", params
+        ).fetchone()[0])
         rows = self.conn.execute(
-            """
+            f"""
             SELECT start, end, kind, label, confidence, metadata_json
-            FROM events WHERE media_id=? ORDER BY start, kind, label
+            FROM events WHERE {where} ORDER BY start, kind, label
+            LIMIT ?
             """,
-            (media_id,),
+            [*params, MAX_EVENTS_PER_VIEW],
         ).fetchall()
+        self.event_list.setUpdatesEnabled(False)
         for row in rows:
             confidence = "" if row["confidence"] is None else f"  conf={float(row['confidence']):.2f}"
             metadata = {}
@@ -907,13 +1071,28 @@ class OphanimAVPlayer(QMainWindow):
             item = QListWidgetItem(f"Indexer error: {media_row['error']}")
             item.setData(KIND_ROLE, "error")
             self.event_list.addItem(item)
-        self._apply_event_filter(self.event_filter.currentText())
+        self.event_list.setUpdatesEnabled(True)
+        if total > len(rows):
+            self.event_summary_label.setText(
+                f"Showing {len(rows):,} of {total:,} matching events. Refine the filter to reduce UI load."
+            )
+        else:
+            self.event_summary_label.setText(f"{total:,} matching events")
 
-    def _apply_event_filter(self, kind: str) -> None:
-        for index in range(self.event_list.count()):
-            item = self.event_list.item(index)
-            item_kind = str(item.data(KIND_ROLE) or "")
-            item.setHidden(kind != "all" and item_kind != kind)
+    def _apply_event_filter(self, _kind: str) -> None:
+        self._reload_events()
+
+    def _queue_event_refresh(self, _text: str) -> None:
+        self.event_search_timer.start()
+
+    def _reload_events(self) -> None:
+        if self.current_media_id is None:
+            return
+        row = self.conn.execute(
+            "SELECT * FROM media WHERE id=?", (self.current_media_id,)
+        ).fetchone()
+        if row:
+            self._load_events(self.current_media_id, row)
 
     def _find_transcript(self) -> None:
         query = self.transcript_search.text().strip()
@@ -994,6 +1173,68 @@ class OphanimAVPlayer(QMainWindow):
             if float(interval["start"]) > current:
                 self.player.set_time(int(float(interval["start"]) * 1000.0))
                 return
+
+    def _load_outputs(self, work_dir: Path) -> None:
+        self.output_list.clear()
+        self.output_list.setUpdatesEnabled(False)
+        for label, filename in OUTPUT_FILES:
+            path = work_dir / filename
+            state = "READY" if path.is_file() else "PENDING"
+            item = QListWidgetItem(f"[{state}] {label}\n{path}")
+            item.setData(OUTPUT_PATH_ROLE, str(path))
+            item.setToolTip(str(path))
+            if not path.is_file():
+                item.setForeground(Qt.GlobalColor.gray)
+            self.output_list.addItem(item)
+        self.output_list.setUpdatesEnabled(True)
+        subtitle = work_dir / "transcript.srt"
+        self.copy_caption_button.setEnabled(subtitle.is_file())
+        self.open_caption_dir_button.setEnabled(work_dir.is_dir())
+        self.caption_label.setText(
+            f"Captions: {subtitle}" if subtitle.is_file() else f"Captions pending: {subtitle}"
+        )
+
+    def _open_output_item(self, item: QListWidgetItem) -> None:
+        path = Path(str(item.data(OUTPUT_PATH_ROLE) or ""))
+        if path.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _copy_caption_path(self) -> None:
+        if self.current_work_dir is None:
+            return
+        subtitle = self.current_work_dir / "transcript.srt"
+        if subtitle.is_file():
+            QApplication.clipboard().setText(str(subtitle))
+            self.statusBar().showMessage(f"Copied caption path: {subtitle}", 5000)
+
+    def _open_caption_directory(self) -> None:
+        if self.current_work_dir and self.current_work_dir.is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.current_work_dir)))
+
+    def _open_external_vlc(self) -> None:
+        if self.current_path is None:
+            return
+        executable = which("vlc") or which("cvlc")
+        if not executable:
+            QMessageBox.critical(self, "VLC unavailable", "Could not find vlc or cvlc in PATH.")
+            return
+        playback_path = self.opened_playback_path or self.current_path
+        command = [executable]
+        if self.current_work_dir:
+            subtitle = self.current_work_dir / "transcript.srt"
+            if subtitle.is_file():
+                command.append(f"--sub-file={subtitle}")
+        command.append(str(playback_path))
+        try:
+            subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError as error:
+            QMessageBox.critical(self, "Could not open VLC", str(error))
 
     def _open_source_directory(self) -> None:
         if self.current_path:

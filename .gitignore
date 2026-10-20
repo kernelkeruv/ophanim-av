@@ -74,3 +74,8 @@ runs/
 .vscode/
 .DS_Store
 *~
+.hf_token
+*hf_token*
+.cache/huggingface/
+huggingface/token
+huggingface/stored_tokens

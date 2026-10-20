@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+REPO="${OPHANIM_AV_REPO:-$HOME/dev/ophanim-av}"
+PY='python3'
+[[ -x "$HOME/dev/OphanimAV/.venv/bin/python" ]] && PY="$HOME/dev/OphanimAV/.venv/bin/python"
+[[ -x "$REPO/.venv/bin/python" ]] && PY="$REPO/.venv/bin/python"
+exec "$PY" "$REPO/src/yolo_auto.py" "$@"
